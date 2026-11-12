@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="dlss_black">#FF000000</color>
+    <color name="dlss_surface">#FF0A0F0A</color>
+    <color name="dlss_surface_2">#FF101710</color>
+    <color name="neon_green">#FF39FF14</color>
+    <color name="neon_green_dim">#FF1F8F12</color>
+    <color name="neon_green_12">#1F39FF14</color>
+    <color name="neon_green_24">#3D39FF14</color>
+    <color name="neon_green_40">#6639FF14</color>
+    <color name="neon_cyan">#FF00FFC6</color>
+    <color name="neon_amber">#FFFFC400</color>
+    <color name="neon_red">#FFFF2D55</color>
+    <color name="text_white">#FFFFFFFF</color>
+    <color name="text_muted">#FF9CA89C</color>
+    <color name="ic_launcher_background">#FF000000</color>
+</resources>

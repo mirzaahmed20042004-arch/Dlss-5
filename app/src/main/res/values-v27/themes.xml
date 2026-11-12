@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.DLSS5" parent="Theme.AppCompat.NoActionBar">
+        <item name="android:windowBackground">@color/dlss_black</item>
+        <item name="android:colorBackground">@color/dlss_black</item>
+        <item name="android:statusBarColor">@color/dlss_black</item>
+        <item name="android:navigationBarColor">@color/dlss_black</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+        <item name="android:textColorPrimary">@color/text_white</item>
+        <item name="android:textColorSecondary">@color/text_muted</item>
+        <item name="colorAccent">@color/neon_green</item>
+        <item name="colorPrimary">@color/neon_green</item>
+        <item name="colorPrimaryDark">@color/dlss_black</item>
+    </style>
+</resources>

@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">DLSS-5</string>
+    <string name="app_tagline">Desktop-class frames. Phone-sized cost.</string>
+    <string name="engage">ENGAGE DLSS 5</string>
+    <string name="disengage">DISENGAGE</string>
+    <string name="calibrating">CALIBRATING…</string>
+    <string name="engine_idle">ENGINE IDLE</string>
+    <string name="engine_active">ENGINE ACTIVE</string>
+    <string name="overlay_permission_required">Please allow \"Display over other apps\" permission to continue.</string>
+    <string name="open_settings">OPEN SETTINGS</string>
+    <string name="grant_notifications">ENABLE NOTIFICATIONS</string>
+    <string name="mode_governor">GOVERNOR</string>
+    <string name="mode_upscale">UPSCALE</string>
+    <string name="mode_true">TRUE DLSS</string>
+    <string name="safe_mode">SAFE MODE</string>
+    <string name="stat_target_fps">TARGET FPS</string>
+    <string name="stat_render_scale">RENDER SCALE</string>
+    <string name="stat_frame_time">FRAME TIME</string>
+    <string name="stat_thermal">THERMAL</string>
+    <string name="history_title">SESSION HISTORY</string>
+    <string name="no_sessions">No runs yet. Engage DLSS 5 to start your first session.</string>
+    <string name="notif_channel_name">Rendering engine</string>
+    <string name="notif_channel_desc">Live DLSS 5 engine status</string>
+    <string name="notif_title">DLSS-5 engine active</string>
+    <string name="notif_action_stop">STOP</string>
+    <string name="gl_fallback">This GPU blocked hardware upscaling. Running in GOVERNOR mode — still safe.</string>
+    <string name="puck_desc">DLSS-5 controls. Drag to move, long press for options.</string>
+    <string name="footer">DLSS-5 v%1$s · %2$s</string>
+    <string name="cloud_synced">Cloud synced</string>
+    <string name="cloud_offline">Offline queue</string>
+</resources>
