@@ -95,14 +95,9 @@ class FloatingPuckView(context: Context) : View(context) {
         }
     }
 
-    init {
-        isClickable = true
-        isFocusable = false
-        contentDescription = "DLSS-5 controls. Drag to move, long press for options."
-        handler.postDelayed(pulseRunnable, 1200L)
-    }
+    private var pulse = 0f
 
-    private val pulseRunnable = object : Runnable {
+    private val pulseRunnable: Runnable = object : Runnable {
         override fun run() {
             pulse = (pulse + 0.08f) % 1f
             invalidate()
@@ -110,7 +105,12 @@ class FloatingPuckView(context: Context) : View(context) {
         }
     }
 
-    private var pulse = 0f
+    init {
+        isClickable = true
+        isFocusable = false
+        contentDescription = "DLSS-5 controls. Drag to move, long press for options."
+        handler.postDelayed(pulseRunnable, 1200L)
+    }
 
     fun setActive(active: Boolean) {
         this.active = active

@@ -150,7 +150,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    override fun onNewIntent(intent: Intent?) {
+    override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         try {
             setIntent(intent)
@@ -475,7 +475,7 @@ class MainActivity : AppCompatActivity() {
             ring.setActive(running)
             if (running) {
                 ring.setStats(
-                    fps = prefs.lastRenderScale * prefs.targetFps,
+                    fps = (prefs.lastRenderScale * prefs.targetFps).toDouble(),
                     scale = prefs.lastRenderScale,
                     stateText = "ENGINE ACTIVE",
                     sub = SessionRecord.modeName(prefs.mode).replace('_', ' ') +
