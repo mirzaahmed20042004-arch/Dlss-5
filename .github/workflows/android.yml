@@ -77,13 +77,21 @@ jobs:
           "$ANDROID_SDK_ROOT/build-tools/34.0.0/aapt2" dump badging "$APK" | head -6
           "$ANDROID_SDK_ROOT/build-tools/34.0.0/apksigner" verify --print-certs "$APK" | head -5
 
-      - name: Upload build log
+      - name: Publish build log to ci-logs branch
         if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-log
-          path: build.log
-          if-no-files-found: ignore
+        run: |
+          if [ ! -f build.log ]; then echo "no log produced" && exit 0; fi
+          WORK=$(mktemp -d)
+          cd "$WORK"
+          git init -q
+          git config user.name  "dlss5-ci"
+          git config user.email "ci@dlss5.local"
+          git checkout -q -b ci-logs
+          cp "$GITHUB_WORKSPACE/build.log" build.log
+          printf '%s\n' "# Run $GITHUB_RUN_ID · $GITHUB_SHA · $GITHUB_JOB" > run.txt
+          git add build.log run.txt
+          git commit -q -m "ci log for run $GITHUB_RUN_ID"
+          git push -q --force "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" ci-logs
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
