@@ -49,6 +49,20 @@ Contrast: white on black = 21:1; neon green on black = 15.9:1; muted text on bla
 6. **Session history** — last 5 sessions (date, mode, avg fps, sparkline).
 7. **Footer** — version + `SAFE MODE` toggle (forces governor-only).
 
+## LIVE HDR graphics (v1.1)
+
+| Preset | Look | Tailored for |
+|---|---|---|
+| **EXTREME HDR** | +10 % exposure, +20 % contrast, +35 % vibrance, strong bloom (0.52), heavy unsharp (0.48) | showcase / cinematic play |
+| **CINEMATIC** | filmic roll-off, soft bloom, warm-neutral | screenshots, long-range spotting |
+| **VISIBILITY** | shadows lifted +11 %, contrast flat, sharpen 0.62, almost no bloom | competitive spotting |
+| **GAME VIVID** | balanced default | ranked play |
+| **NATIVE** | no colour work | pure DLSS path |
+
+The HDR layer is a full-screen, **translucent, non-touchable** window that sits above the game and below
+the stats HUD. Its pixels are a per-pixel *correction* solved on the GPU (see ARCHITECTURE §4), so the
+game keeps rendering underneath: no latency, no replaced frames, and every touch still reaches PUBG.
+
 ## Floating puck (overlay)
 
 56dp circle, 78 % opaque black, 2dp neon ring, logo glyph inside. Long-press → 96dp ring menu with

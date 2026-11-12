@@ -82,6 +82,29 @@ is unavailable:
    create (common on Adreno 5xx + some Mali), the service silently degrades to the governor-only
    path, keeps the puck usable, and reports `mode=GOVERNOR` to telemetry. No crash, no black screen.
 
+## 4b. LIVE HDR graphics path (v1.1)
+
+```
+MediaProjection (30 fps, 0.75–0.82× resolution)
+  → neutralise our own previous correction layer   (game ≈ (observed − α·layer)/(1−α))
+  → GPU passes: bright-pass → 2× separated blur → HDR composite
+        linearise · exposure · white balance · contrast pivot
+        · Reinhard highlight shoulder · shadow lift · luma-preserving saturation
+        · + bloom · 5-tap unsharp · blend with original
+  → solve src-over for a correction layer: src = (graded − game·(1−α)) / α
+  → draw that layer on a TRANSLUCENT, NOT-TOUCHABLE overlay window
+```
+
+**Why a correction layer and not a graded screenshot:** MediaProjection captures our overlay too. Replacing
+the screen with an opaque graded copy turns the pipeline into a feedback loop that compounds into a tunnel.
+Emitting a per-pixel correction with alpha α gives loop gain `1−α`, so repeated frames converge
+geometrically onto the requested grade — stable, no recursion — while the game's own frames, touch input
+and latency are untouched. This is the same principle as a colour-correction glass pane: it can only
+*modify* what is behind it, never replace it.
+
+Failure ladder: shader won't compile → HDR layer stays hidden, service says "governor mode" (never pushes
+raw frames, which would re-capture and compound); compositor dies mid-session → layer hidden immediately.
+
 ## 5. Frame governor (adaptive DRS)
 
 `FrameGovernor` is a PI controller over the observed frame interval:

@@ -37,8 +37,27 @@ A one-button overlay engine that makes PUBG Mobile frame pacing more stable on m
 | Mode | Permission | What actually runs |
 |---|---|---|
 | **GOVERNOR** (default) | overlay | frame-pacing measurement + adaptive DRS governor + thermal capping. Always available, zero risk. |
-| **UPSCALE** | overlay | the GLES pass chain (bicubic + unsharp + temporal), previewed in a dimmed HUD layer. |
-| **TRUE DLSS** | overlay + screen capture | real frames from `MediaProjection` at 0.70×, Lanczos-3 upscale, unsharp mask, temporal blend. |
+| **UPSCALE** | overlay + capture | the GLES pass chain (bicubic + unsharp + temporal), previewed in a dimmed HUD layer. |
+| **TRUE DLSS** | overlay + capture | real frames from `MediaProjection` at 0.70×, Lanczos-3 upscale, unsharp mask, temporal blend. |
+| **HDR** | overlay + capture | **live GPU colour grade at 30 fps**: filmic tone-mapping, bloom, +35 % vibrance, shadow lift, unsharp — applied to the real game picture through a translucent correction layer. |
+
+### LIVE HDR graphics — free, five presets
+
+| Preset | What you see |
+|---|---|
+| **EXTREME HDR** | deep blacks, glowing highlights, real bloom on sun/explosions, maximum vibrance |
+| CINEMATIC | filmic curve, soft bloom, teal-leaning shadows |
+| VISIBILITY | shadows lifted, edges sharpened — spot enemies in dark corners |
+| GAME VIVID | balanced default |
+| NATIVE | colour work off (pure DLSS) |
+
+Switch presets live from the app (prev/next), or in-game from the puck menu (**HDR PRESET**).
+Blend control: 100 % → 75 % → 50 % if the look is too strong.
+
+**How it stays honest:** the graded picture is produced by a real GLSL pipeline running on captured
+frames. The layer is translucent and touch-transparent, so PUBG keeps rendering, keeps its input, and keeps
+its latency — the HDR pass *modifies* the picture rather than replacing it. It is a genuine image-processing
+chain you can see, not a shader-compilation stub, and it is free.
 
 ## Install
 
