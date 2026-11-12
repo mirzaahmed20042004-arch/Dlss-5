@@ -418,11 +418,16 @@ class DlssOverlayService : Service() {
     private fun startCapture(resultCode: Int, data: Intent) {
         try {
             capture?.shutdown("restart")
+            // UPSCALE = cheap bicubic chain at a faster preview rate.
+            // TRUE DLSS = Lanczos-3 + unsharp at a lower preview rate (quality over cadence).
+            val trueDlss = prefs.mode == Prefs.MODE_TRUE_DLSS
             capture = ScreenCaptureEngine(
                 context = this,
                 resultCode = resultCode,
                 projectionData = data,
                 profile = profile,
+                preferLanczos = trueDlss,
+                maxFps = if (trueDlss) 12 else 20,
                 onFrame = { bitmap, costMs ->
                     mainHandler.post {
                         try {
@@ -446,9 +451,11 @@ class DlssOverlayService : Service() {
                     }
                 }
             ).also { it.start() }
-            overlay?.setStatus("TRUE DLSS", Color.parseColor("#00FFC6"))
-            prefs.mode = Prefs.MODE_TRUE_DLSS
-            engine?.setMode(Prefs.MODE_TRUE_DLSS)
+            overlay?.setStatus(
+                if (trueDlss) "TRUE DLSS" else "UPSCALE",
+                Color.parseColor("#00FFC6")
+            )
+            engine?.setMode(prefs.mode)
             Logger.i(TAG, "capture engine started")
         } catch (t: Throwable) {
             Logger.e(TAG, "startCapture failed", t)

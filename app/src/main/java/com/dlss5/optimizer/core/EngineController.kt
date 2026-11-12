@@ -54,8 +54,13 @@ class EngineController(
     private var worker: Handler? = null
     private var mainHandler: Handler? = null
 
-    private lateinit var monitor: FrameMonitor
-    private lateinit var governor: FrameGovernor
+    private var monitor: FrameMonitor? = null
+    private val governor = FrameGovernor(
+        targetFps = prefs.targetFps,
+        minScale = 0.55f,
+        maxScale = 1.0f,
+        initialScale = if (prefs.safeMode) 0.75f else prefs.lastRenderScale.coerceIn(0.55f, 1.0f)
+    )
 
     @Volatile
     private var running = false
@@ -89,10 +94,6 @@ class EngineController(
             thread = t
             worker = Handler(t.looper)
 
-            governor = FrameGovernor(
-                targetFps = prefs.targetFps,
-                initialScale = if (prefs.safeMode) 0.75f else prefs.lastRenderScale
-            )
             applyRemoteConfig()
 
             sessionId = UUID.randomUUID().toString()
@@ -105,8 +106,7 @@ class EngineController(
             prefs.engineRunning = true
             prefs.sessionCount = prefs.sessionCount + 1
 
-            monitor = FrameMonitor(prefs.targetFps) { snapshot -> onFrameSnapshot(snapshot) }
-            monitor.start()
+            monitor = FrameMonitor(prefs.targetFps) { snapshot -> onFrameSnapshot(snapshot) }.also { it.start() }
             registerThermalListener()
 
             Logger.i(TAG, "engine started session=$sessionId mode=${SessionRecord.modeName(prefs.mode)}")
@@ -122,7 +122,7 @@ class EngineController(
         if (!running) return
         running = false
         try {
-            monitor.stop()
+            monitor?.stop()
             unregisterThermalListener()
             finalizeSession(reason)
             mainHandler?.post {
@@ -162,7 +162,7 @@ class EngineController(
     fun setMode(mode: Int) {
         try {
             prefs.mode = mode
-            monitor.resetWindow()
+            monitor?.resetWindow()
             Logger.i(TAG, "mode -> ${SessionRecord.modeName(mode)}")
         } catch (t: Throwable) {
             Logger.w(TAG, "setMode failed: ${t.message}")
@@ -172,9 +172,8 @@ class EngineController(
     fun setTargetFps(fps: Int) {
         prefs.targetFps = fps
         governor.setTargetFps(fps)
-        monitor.stop()
-        monitor = FrameMonitor(fps) { snapshot -> onFrameSnapshot(snapshot) }
-        monitor.start()
+        monitor?.stop()
+        monitor = FrameMonitor(fps) { snapshot -> onFrameSnapshot(snapshot) }.also { it.start() }
     }
 
     fun setAdaptiveEnabled(enabled: Boolean) {

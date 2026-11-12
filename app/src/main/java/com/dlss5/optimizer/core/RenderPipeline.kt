@@ -48,6 +48,7 @@ class RenderPipeline {
     private var srcTex = 0
     private var downTex = 0
     private var blendTex = 0
+    private var histNextTex = 0
     private var outTex = 0
     private var fbo = 0
 
@@ -255,6 +256,7 @@ class RenderPipeline {
         srcTex = createTexture()
         downTex = createTexture()
         blendTex = createTexture()
+        histNextTex = createTexture()
         outTex = createTexture()
         val fbos = IntArray(1)
         GLES20.glGenFramebuffers(1, fbos, 0)
@@ -320,6 +322,7 @@ class RenderPipeline {
         allocate(srcTex, width, height)
         allocate(downTex, downWidth, downHeight)
         allocate(blendTex, downWidth, downHeight)
+        allocate(histNextTex, downWidth, downHeight)
         allocate(outTex, width, height)
         haveHistory = false
         Logger.d(TAG, "resize out=${width}x$height down=${downWidth}x$downHeight")
@@ -366,10 +369,19 @@ class RenderPipeline {
             val sw = (w * renderScale.coerceIn(0.5f, 1f)).toInt().coerceAtLeast(2)
             val sh = (h * renderScale.coerceIn(0.5f, 1f)).toInt().coerceAtLeast(2)
             drawInto(downProgram, srcTex, sw, sh, downTex, 1f, srcW = w, srcH = h)
-            // 2. temporal blend against previous (stabilises micro-jitter)
+            // 2. temporal blend against previous (stabilises micro-jitter).
+            //    Renders into histNextTex so we never sample the texture we are writing to
+            //    (GLES forbids a feedback loop; that bug renders undefined garbage).
             if (haveHistory) {
-                blendHistory(sw, sh)
+                blendFrames(sw, sh)
+                // rotate: the blended result becomes the new history
+                val previous = blendTex
+                blendTex = histNextTex
+                histNextTex = previous
             } else {
+                val previous = blendTex
+                blendTex = downTex
+                downTex = previous
                 haveHistory = true
             }
             // 3. upscale back to full size with the quality kernel
@@ -425,10 +437,9 @@ class RenderPipeline {
         drawQuad(program)
     }
 
-    private fun blendHistory(w: Int, h: Int) {
-        // downTex holds the current downscaled frame; blendTex holds history. Render into downTex's
-        // sibling by sampling both and writing to downTex (we then treat downTex as "current blended").
-        bindFbo(downTex, w, h)
+    private fun blendFrames(w: Int, h: Int) {
+        // prev = blendTex (history), cur = downTex (this frame) → histNextTex (no feedback loop)
+        bindFbo(histNextTex, w, h)
         GLES20.glUseProgram(blendProgram)
         GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
         GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, blendTex)
@@ -461,20 +472,8 @@ class RenderPipeline {
         GLES20.glReadPixels(0, 0, w, h, GLES20.GL_ALPHA, GLES20.GL_UNSIGNED_BYTE, buffer)
         buffer.position(0)
         result.copyPixelsFromBuffer(buffer)
-        // save the blended downscale as history for the next frame
-        copyToHistory()
         checkGl("sharpen")
         return result
-    }
-
-    private fun copyToHistory() {
-        // history = current downscaled frame (downTex) → blendTex
-        if (downWidth <= 0 || downHeight <= 0) return
-        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, blendTex)
-        GLES20.glCopyTexImage2D(
-            GLES20.GL_TEXTURE_2D, 0, GLES20.GL_ALPHA, 0, 0, downWidth, downHeight, 0
-        )
-        checkGl("copyToHistory")
     }
 
     private fun drawQuad(program: Int) {
@@ -520,6 +519,7 @@ class RenderPipeline {
             srcTex = 0
             downTex = 0
             blendTex = 0
+            histNextTex = 0
             outTex = 0
             fbo = 0
             outWidth = 0

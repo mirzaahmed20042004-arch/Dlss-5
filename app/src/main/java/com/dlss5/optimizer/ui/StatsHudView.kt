@@ -71,6 +71,14 @@ class StatsHudView(context: Context) : View(context) {
 
     @Volatile
     private var previewBitmap: android.graphics.Bitmap? = null
+
+    /**
+     * Double buffer: the capture thread produces a new ALPHA_8 bitmap every frame while the UI thread is
+     * still drawing the previous one. Holding two slots lets us swap without tearing and lets us recycle
+     * the bitmap that is no longer referenced (zero allocation churn during a session).
+     */
+    private var previewSwap: android.graphics.Bitmap? = null
+    private var previewRecycleNext = false
     private var previewPaint = Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG)
 
     init {
@@ -104,9 +112,37 @@ class StatsHudView(context: Context) : View(context) {
 
     /** TRUE DLSS preview frame — drawn dimmed so the game remains playable while it is on. */
     fun setPreview(frame: android.graphics.Bitmap?, alpha: Float) {
-        previewBitmap = frame
-        previewAlpha = alpha.coerceIn(0f, 1f)
-        invalidate()
+        try {
+            if (frame == null) {
+                previewSwap?.let { if (!it.isRecycled) it.recycle() }
+                previewSwap = null
+                previewBitmap = null
+                previewAlpha = 0f
+            } else {
+                val outgoing = previewSwap
+                previewSwap = frame
+                previewBitmap = frame
+                if (previewRecycleNext && outgoing != null && !outgoing.isRecycled) {
+                    outgoing.recycle()
+                }
+                previewRecycleNext = true
+                previewAlpha = alpha.coerceIn(0f, 1f)
+            }
+            invalidate()
+        } catch (t: Throwable) {
+            Logger.w(TAG, "setPreview failed: ${t.message}")
+        }
+    }
+
+    override fun onDetachedFromWindow() {
+        try {
+            previewBitmap = null
+            previewSwap?.let { if (!it.isRecycled) it.recycle() }
+            previewSwap = null
+        } catch (t: Throwable) {
+            Logger.w(TAG, "preview cleanup failed: ${t.message}")
+        }
+        super.onDetachedFromWindow()
     }
 
     override fun onDraw(canvas: Canvas) {

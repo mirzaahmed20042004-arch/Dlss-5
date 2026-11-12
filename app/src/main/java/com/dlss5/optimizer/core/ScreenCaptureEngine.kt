@@ -34,6 +34,7 @@ class ScreenCaptureEngine(
     private val profile: DeviceProfile,
     private val onFrame: (Bitmap, Long) -> Unit,
     private val onFailure: (String) -> Unit,
+    private val preferLanczos: Boolean = true,
     private val maxFps: Int = 12
 ) {
 
@@ -105,7 +106,7 @@ class ScreenCaptureEngine(
             )
             if (virtualDisplay == null) throw IllegalStateException("virtual display rejected")
 
-            val lanczos = FilterKernels.canAffordLanczos(profile.tier, metrics.widthPixels)
+            val lanczos = preferLanczos && FilterKernels.canAffordLanczos(profile.tier, metrics.widthPixels)
             val ok = pipeline.init(metrics.widthPixels and 0xFFFFFFFE.toInt(), metrics.heightPixels, lanczos)
             if (!ok) throw IllegalStateException("upscale pipeline unavailable on this GPU")
 

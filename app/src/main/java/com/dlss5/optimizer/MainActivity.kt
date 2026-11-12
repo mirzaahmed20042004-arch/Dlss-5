@@ -77,7 +77,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var toggleTelemetry: TextView
 
     private var busy = false
-    private var pendingCaptureAfterEngage = false
+    private var pendingModeAfterCapture: Int = Prefs.MODE_TRUE_DLSS
 
     private val overlayPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -111,14 +111,18 @@ class MainActivity : AppCompatActivity() {
     ) { result ->
         try {
             if (result.resultCode == RESULT_OK && result.data != null) {
-                prefs.mode = Prefs.MODE_TRUE_DLSS
+                val chosen = pendingModeAfterCapture
+                prefs.mode = chosen
                 syncModeChips()
                 launchService(
-                    mode = Prefs.MODE_TRUE_DLSS,
+                    mode = chosen,
                     captureResultCode = result.resultCode,
                     captureData = result.data
                 )
-                toast("TRUE DLSS capture armed — minimise to your game.")
+                toast(
+                    if (chosen == Prefs.MODE_TRUE_DLSS) "TRUE DLSS capture armed — minimise to your game."
+                    else "UPSCALE armed — minimise to your game."
+                )
             } else {
                 prefs.mode = Prefs.MODE_GOVERNOR
                 syncModeChips()
@@ -261,7 +265,8 @@ class MainActivity : AppCompatActivity() {
     private fun selectMode(mode: Int) {
         try {
             Haptics.confirm(this)
-            if (mode == Prefs.MODE_TRUE_DLSS) {
+            if (mode == Prefs.MODE_TRUE_DLSS || mode == Prefs.MODE_UPSCALE) {
+                pendingModeAfterCapture = mode
                 requestCapture()
                 return
             }
@@ -400,7 +405,10 @@ class MainActivity : AppCompatActivity() {
                     busy = false
                     unlockButton()
                     when (prefs.mode) {
-                        Prefs.MODE_TRUE_DLSS -> requestCapture()
+                        Prefs.MODE_TRUE_DLSS, Prefs.MODE_UPSCALE -> {
+                            pendingModeAfterCapture = prefs.mode
+                            requestCapture()
+                        }
                         else -> {
                             launchService(mode = prefs.mode)
                             moveTaskToBack(true)
