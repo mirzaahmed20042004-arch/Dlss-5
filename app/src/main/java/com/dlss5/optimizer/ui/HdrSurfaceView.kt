@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.Rect
 import android.graphics.RectF
 import android.graphics.Typeface
 import android.view.View
@@ -40,8 +41,8 @@ class HdrSurfaceView(context: Context) : View(context) {
         letterSpacing = 0.14f
         typeface = Typeface.create("sans-serif-condensed", Typeface.BOLD)
     }
-    private val srcRect = RectF()
-    private val dstRect = RectF()
+    private val srcRect = Rect()
+    private val dstRect = Rect()
     private val badgeRect = RectF()
 
     @Volatile
@@ -113,8 +114,8 @@ class HdrSurfaceView(context: Context) : View(context) {
         try {
             val bmp = current
             if (bmp != null && !bmp.isRecycled) {
-                srcRect.set(0f, 0f, bmp.width.toFloat(), bmp.height.toFloat())
-                dstRect.set(0f, 0f, width.toFloat(), height.toFloat())
+                srcRect.set(0, 0, bmp.width, bmp.height)
+                dstRect.set(0, 0, width, height)
                 canvas.drawBitmap(bmp, srcRect, dstRect, bitmapPaint)
                 framesDrawn++
             } else {
