@@ -93,6 +93,7 @@ class DlssOverlayService : Service() {
     private val mainHandler = Handler(Looper.getMainLooper())
     private var lastNotificationUpdate = 0L
     private var glFallbackToastShown = false
+    private var hdrFrames = 0L
 
     private val stopReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -173,6 +174,7 @@ class DlssOverlayService : Service() {
             @Suppress("DEPRECATION")
             val projectionData = intent?.getParcelableExtra<Intent>(EXTRA_CAPTURE_DATA)
             if (resultCode != Int.MIN_VALUE && projectionData != null) {
+                promoteForegroundForCapture()
                 startCapture(resultCode, projectionData)
             }
 
@@ -189,10 +191,13 @@ class DlssOverlayService : Service() {
 
     // ------------------------------------------------------------------ foreground
 
+    @Volatile
+    private var captureActive = false
+
     private fun goForeground(): Boolean = try {
         val notification = buildNotification()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            startForeground(NOTIF_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+            startForeground(NOTIF_ID, notification, foregroundType())
         } else {
             startForeground(NOTIF_ID, notification)
         }
@@ -205,6 +210,30 @@ class DlssOverlayService : Service() {
             true
         } catch (t2: Throwable) {
             false
+        }
+    }
+
+    /**
+     * Android 14 requires the mediaProjection type to be declared *at start time* for a projection
+     * session to be allowed. We advertise it as soon as capture is requested and keep `specialUse` for
+     * the overlay/governor part.
+     */
+    private fun foregroundType(): Int {
+        var type = ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+        if (captureActive && Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            type = type or ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION
+        }
+        return type
+    }
+
+    private fun promoteForegroundForCapture() {
+        try {
+            captureActive = true
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                startForeground(NOTIF_ID, buildNotification(), foregroundType())
+            }
+        } catch (t: Throwable) {
+            Logger.w(TAG, "capture foreground promotion failed: ${t.message}")
         }
     }
 
@@ -388,9 +417,30 @@ class DlssOverlayService : Service() {
                     Haptics.confirm(this)
                 }
                 OverlayController.MenuAction.TOGGLE_CAPTURE -> requestCaptureFromOverlay()
+                OverlayController.MenuAction.TOGGLE_HDR -> {
+                    val showing = overlay?.hdr()?.isShowing() == true
+                    overlay?.setHdrVisible(!showing)
+                    toastOnce(if (showing) "HDR layer hidden — raw game visible" else "HDR layer shown")
+                }
+                OverlayController.MenuAction.NEXT_HDR_PRESET -> cycleHdrPreset()
             }
         } catch (t: Throwable) {
             Logger.e(TAG, "menu action failed", t)
+        }
+    }
+
+    /** Cycles EXTREME HDR → CINEMATIC → VISIBILITY → VIVID → NATIVE and applies it live. */
+    private fun cycleHdrPreset() {
+        try {
+            val next = HdrPreset.next(prefs.hdrPresetId)
+            prefs.hdrPresetId = next.id
+            capture?.setHdrPreset(next)
+            overlay?.setHdrPresetLabel(next.label)
+            overlay?.setStatus(next.label, Color.parseColor("#39FF14"))
+            toastOnce("HDR preset: ${next.label} — ${next.description}")
+            Haptics.confirm(this)
+        } catch (t: Throwable) {
+            Logger.e(TAG, "cycleHdrPreset failed", t)
         }
     }
 
@@ -418,29 +468,49 @@ class DlssOverlayService : Service() {
     private fun startCapture(resultCode: Int, data: Intent) {
         try {
             capture?.shutdown("restart")
+            capture = null
+            promoteForegroundForCapture()
+
+            val mode = prefs.mode
+            val hdr = mode == Prefs.MODE_HDR
+            val preset = HdrPreset.byId(prefs.hdrPresetId).let {
+                HdrPreset.withRemote(it, prefs.remoteConfigJson?.let { raw ->
+                    runCatching { org.json.JSONObject(raw).optJSONObject("hdr") }.getOrNull()
+                })
+            }
+            // HDR mode runs the compositor at the preset's cadence; DLSS modes keep their own rates.
             // UPSCALE = cheap bicubic chain at a faster preview rate.
             // TRUE DLSS = Lanczos-3 + unsharp at a lower preview rate (quality over cadence).
-            val trueDlss = prefs.mode == Prefs.MODE_TRUE_DLSS
+            val trueDlss = mode == Prefs.MODE_TRUE_DLSS
+
+            if (hdr) {
+                overlay?.setHdrPresetLabel(preset.label)
+                prefs.hdrPresetId = preset.id
+            }
+
             capture = ScreenCaptureEngine(
                 context = this,
                 resultCode = resultCode,
                 projectionData = data,
                 profile = profile,
-                preferLanczos = trueDlss,
-                maxFps = if (trueDlss) 12 else 20,
                 onFrame = { bitmap, costMs ->
-                    mainHandler.post {
-                        try {
+                    try {
+                        if (hdr) {
+                            overlay?.submitHdrFrame(bitmap, costMs)
+                            overlay?.setHdrVisible(true)
+                        } else {
                             overlay?.setPreview(bitmap, 0.35f)
-                            engine?.reportEngineCost(costMs)
-                        } catch (t: Throwable) {
-                            Logger.w(TAG, "preview push failed: ${t.message}")
                         }
+                        engine?.reportEngineCost(costMs)
+                        hdrFrames++
+                    } catch (t: Throwable) {
+                        Logger.w(TAG, "frame delivery failed: ${t.message}")
                     }
                 },
                 onFailure = { reason ->
                     mainHandler.post {
                         try {
+                            overlay?.setHdrVisible(false)
                             overlay?.setStatus("GOVERNOR MODE", Color.parseColor("#FFC400"))
                             toastOnce("Capture stopped ($reason). Running in GOVERNOR mode.")
                             prefs.mode = Prefs.MODE_GOVERNOR
@@ -449,16 +519,48 @@ class DlssOverlayService : Service() {
                             Logger.w(TAG, "capture failure handling: ${t.message}")
                         }
                     }
-                }
+                },
+                preferLanczos = trueDlss,
+                maxFps = when {
+                    hdr -> preset.targetFps
+                    trueDlss -> 12
+                    else -> 20
+                },
+                hdrEnabled = hdr,
+                hdrPreset = preset,
+                hdrBlend = prefs.hdrBlend,
+                captureScaleOverride = if (hdr) preset.captureScale else -1f,
+                upscaleOutput = !hdr
             ).also { it.start() }
+
             overlay?.setStatus(
-                if (trueDlss) "TRUE DLSS" else "UPSCALE",
-                Color.parseColor("#00FFC6")
+                when {
+                    hdr -> preset.label
+                    trueDlss -> "TRUE DLSS"
+                    else -> "UPSCALE"
+                },
+                if (hdr) Color.parseColor("#39FF14") else Color.parseColor("#00FFC6")
             )
-            engine?.setMode(prefs.mode)
-            Logger.i(TAG, "capture engine started")
+            engine?.setMode(mode)
+            engine?.setHdrActive(hdr)
+            Logger.i(TAG, "capture engine started mode=${SessionRecord.modeName(mode)} hdr=$hdr preset=${preset.id}")
+
+            // If the projection was accepted but the compositor could not start, tell the user once and
+            // drop back to the governor so nothing silently looks "broken".
+            mainHandler.postDelayed({
+                try {
+                    val active = capture
+                    if (hdr && active != null && !active.hdrActive()) {
+                        toastOnce("This GPU blocked the HDR shader. Running DLSS upscale instead.")
+                        overlay?.setStatus("UPSCALE", Color.parseColor("#FFC400"))
+                    }
+                } catch (t: Throwable) {
+                    Logger.w(TAG, "hdr health check failed: ${t.message}")
+                }
+            }, 2500L)
         } catch (t: Throwable) {
             Logger.e(TAG, "startCapture failed", t)
+            overlay?.setHdrVisible(false)
             engine?.setMode(Prefs.MODE_GOVERNOR)
         }
     }
@@ -533,6 +635,11 @@ class DlssOverlayService : Service() {
             capture?.shutdown(reason)
         } catch (t: Throwable) {
             Logger.w(TAG, "capture shutdown: ${t.message}")
+        }
+        try {
+            overlay?.setHdrVisible(false)
+        } catch (t: Throwable) {
+            Logger.w(TAG, "HDR layer shutdown: ${t.message}")
         }
         try {
             engine?.stop(reason)

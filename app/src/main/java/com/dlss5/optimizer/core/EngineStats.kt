@@ -19,6 +19,7 @@ data class SessionRecord(
     val socTier: String,
     val lanczos: Boolean,
     val engineCostMs: Double,
+    val hdrPreset: String? = null,
     val synced: Boolean = false
 ) {
     fun toJson(): JSONObject = JSONObject().apply {
@@ -37,6 +38,7 @@ data class SessionRecord(
         put("soc_tier", socTier)
         put("lanczos", lanczos)
         put("engine_cost_ms", round2(engineCostMs))
+        if (hdrPreset != null) put("hdr_preset", hdrPreset)
     }
 
     fun toLocalJson(): String = toJson().put("synced", synced).toString()
@@ -60,6 +62,7 @@ data class SessionRecord(
                 mode = o.optInt("mode_int", when (o.optString("mode")) {
                     "UPSCALE" -> 1
                     "TRUE_DLSS" -> 2
+                    "HDR" -> 3
                     else -> 0
                 }),
                 targetFps = o.optInt("target_fps", 60),
@@ -72,6 +75,7 @@ data class SessionRecord(
                 socTier = o.optString("soc_tier", "mid"),
                 lanczos = o.optBoolean("lanczos", false),
                 engineCostMs = o.optDouble("engine_cost_ms", 0.0),
+                hdrPreset = o.optString("hdr_preset", "").takeIf { it.isNotBlank() },
                 synced = o.optBoolean("synced", false)
             )
         } catch (t: Throwable) {

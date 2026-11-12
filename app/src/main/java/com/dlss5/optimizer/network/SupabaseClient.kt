@@ -120,7 +120,11 @@ class SupabaseClient(private val prefs: Prefs) {
 
     fun upsertSession(session: SessionRecord): Boolean {
         if (!SupabaseConfig.isConfigured()) return false
-        val payload = JSONArray().put(session.toJson())
+        val row = session.toJson().apply {
+            put("hdr_enabled", session.hdrPreset != null)
+            if (session.hdrPreset != null) put("hdr_preset", session.hdrPreset)
+        }
+        val payload = JSONArray().put(row)
         val res = request(
             "${SupabaseConfig.restUrl(SupabaseConfig.TABLE_SESSIONS)}?on_conflict=session_id",
             "POST",

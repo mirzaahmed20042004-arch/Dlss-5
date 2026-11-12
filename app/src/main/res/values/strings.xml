@@ -13,6 +13,7 @@
     <string name="mode_governor">GOVERNOR</string>
     <string name="mode_upscale">UPSCALE</string>
     <string name="mode_true">TRUE DLSS</string>
+    <string name="mode_hdr">HDR</string>
     <string name="safe_mode">SAFE MODE</string>
     <string name="stat_target_fps">TARGET FPS</string>
     <string name="stat_render_scale">RENDER SCALE</string>

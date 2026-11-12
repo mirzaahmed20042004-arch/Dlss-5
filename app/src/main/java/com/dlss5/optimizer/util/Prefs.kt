@@ -29,10 +29,20 @@ class Prefs private constructor(context: Context) {
         const val KEY_ANALYTICS_OPT_IN = "analytics_opt_in"
         const val KEY_GL_FALLBACK_NOTIFIED = "gl_fallback_notified"
         const val KEY_CONFIG_JSON = "remote_config_json"
+        const val KEY_HDR_PRESET = "hdr_preset_id"
+        const val KEY_HDR_ENABLED = "hdr_enabled"
+        const val KEY_HDR_BLEND = "hdr_blend"
+        const val KEY_HDR_LAST_MODE = "hdr_last_mode"
 
+        /** Engine modes. Values are persisted, so never renumber — append only. */
         const val MODE_GOVERNOR = 0
         const val MODE_UPSCALE = 1
         const val MODE_TRUE_DLSS = 2
+        const val MODE_HDR = 3
+
+        /** Every mode that needs screen capture consent. */
+        fun requiresCapture(mode: Int): Boolean =
+            mode == MODE_UPSCALE || mode == MODE_TRUE_DLSS || mode == MODE_HDR
 
         @Volatile
         private var instance: Prefs? = null
@@ -55,7 +65,7 @@ class Prefs private constructor(context: Context) {
 
     var mode: Int
         get() = sp.getInt(KEY_MODE, MODE_GOVERNOR)
-        set(value) = sp.edit().putInt(KEY_MODE, value).apply()
+        set(value) = sp.edit().putInt(KEY_MODE, value.coerceIn(0, MODE_HDR)).apply()
 
     var safeMode: Boolean
         get() = sp.getBoolean(KEY_SAFE_MODE, false)
@@ -92,6 +102,23 @@ class Prefs private constructor(context: Context) {
     var sessionCount: Int
         get() = sp.getInt(KEY_TOTAL_SESSIONS, 0)
         set(value) = sp.edit().putInt(KEY_TOTAL_SESSIONS, value).apply()
+
+    // ---------------------------------------------------------------- HDR compositor
+
+    /** Id of the active colour preset, e.g. `extreme_hdr`. */
+    var hdrPresetId: String
+        get() = sp.getString(KEY_HDR_PRESET, "extreme_hdr") ?: "extreme_hdr"
+        set(value) = sp.edit().putString(KEY_HDR_PRESET, value).apply()
+
+    /** When false the compositor is bypassed even in HDR mode (pure upscale path). */
+    var hdrEnabled: Boolean
+        get() = sp.getBoolean(KEY_HDR_ENABLED, true)
+        set(value) = sp.edit().putBoolean(KEY_HDR_ENABLED, value).apply()
+
+    /** 0 = raw game pixels, 1 = full graded image. Default 1.0 (user asked for the real effect). */
+    var hdrBlend: Float
+        get() = sp.getFloat(KEY_HDR_BLEND, 1.0f).coerceIn(0f, 1f)
+        set(value) = sp.edit().putFloat(KEY_HDR_BLEND, value.coerceIn(0f, 1f)).apply()
 
     /** Rotates the anonymous identity and drops locally queued telemetry ownership. */
     fun rotateDeviceId(): String {

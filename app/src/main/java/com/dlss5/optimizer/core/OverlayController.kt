@@ -13,6 +13,7 @@ import android.view.WindowManager
 import android.widget.LinearLayout
 import android.widget.TextView
 import com.dlss5.optimizer.ui.FloatingPuckView
+import com.dlss5.optimizer.ui.HdrSurfaceView
 import com.dlss5.optimizer.ui.StatsHudView
 import com.dlss5.optimizer.util.Haptics
 import com.dlss5.optimizer.util.Logger
@@ -37,12 +38,14 @@ class OverlayController(
     private val onMenuAction: (MenuAction) -> Unit
 ) {
 
-    enum class MenuAction { STOP, TOGGLE_HUD, NEXT_MODE, TOGGLE_CAPTURE }
+    enum class MenuAction { STOP, TOGGLE_HUD, NEXT_MODE, TOGGLE_CAPTURE, TOGGLE_HDR, NEXT_HDR_PRESET }
 
     private val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
     private val mainHandler = Handler(Looper.getMainLooper())
 
     private var hudView: StatsHudView? = null
+    private var hdrView: HdrSurfaceView? = null
+    private var hdrParams: WindowManager.LayoutParams? = null
     private var puckView: FloatingPuckView? = null
     private var menuView: LinearLayout? = null
     private var hudParams: WindowManager.LayoutParams? = null
@@ -51,6 +54,7 @@ class OverlayController(
     private var attached = false
 
     fun hud(): StatsHudView? = hudView
+    fun hdr(): HdrSurfaceView? = hdrView
     fun puck(): FloatingPuckView? = puckView
     fun isAttached(): Boolean = attached
 
@@ -61,6 +65,7 @@ class OverlayController(
             return false
         }
         return try {
+            attachHdrLayer()
             attachHud()
             attachPuck()
             attached = true
@@ -70,6 +75,61 @@ class OverlayController(
             Logger.e(TAG, "attach failed", t)
             detach()
             false
+        }
+    }
+
+    /**
+     * The live-HDR presentation layer: full-screen, opaque, NOT touchable, added before the HUD so it
+     * sits underneath the stats panel. Hidden until the capture engine delivers its first graded frame.
+     */
+    private fun attachHdrLayer() {
+        val view = HdrSurfaceView(context)
+        view.setVisible(false)
+        val params = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.MATCH_PARENT,
+            overlayType(),
+            WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
+                WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED or
+                WindowManager.LayoutParams.FLAG_FULLSCREEN,
+            PixelFormat.OPAQUE
+        ).apply {
+            gravity = Gravity.TOP or Gravity.START
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                layoutInDisplayCutoutMode =
+                    WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+            }
+        }
+        windowManager.addView(view, params)
+        hdrView = view
+        hdrParams = params
+    }
+
+    /** Shows/hides the graded frame layer (only meaningful once capture is delivering frames). */
+    fun setHdrVisible(visible: Boolean) {
+        try {
+            hdrView?.setVisible(visible)
+        } catch (t: Throwable) {
+            Logger.w(TAG, "HDR visibility failed: ${t.message}")
+        }
+    }
+
+    fun submitHdrFrame(bitmap: android.graphics.Bitmap, costMs: Long) {
+        try {
+            hdrView?.submitFrame(bitmap, costMs)
+        } catch (t: Throwable) {
+            Logger.w(TAG, "HDR frame push failed: ${t.message}")
+        }
+    }
+
+    fun setHdrPresetLabel(label: String) {
+        try {
+            hdrView?.setPresetLabel(label)
+        } catch (t: Throwable) {
+            Logger.w(TAG, "HDR label failed: ${t.message}")
         }
     }
 
@@ -171,6 +231,8 @@ class OverlayController(
             menu.addView(menuRow("TOGGLE HUD", MenuAction.TOGGLE_HUD, Color.parseColor("#39FF14")))
             menu.addView(menuRow("NEXT MODE", MenuAction.NEXT_MODE, Color.parseColor("#00FFC6")))
             menu.addView(menuRow("CAPTURE DLSS", MenuAction.TOGGLE_CAPTURE, Color.parseColor("#FFC400")))
+            menu.addView(menuRow("HDR LAYER", MenuAction.TOGGLE_HDR, Color.parseColor("#39FF14")))
+            menu.addView(menuRow("HDR PRESET", MenuAction.NEXT_HDR_PRESET, Color.parseColor("#00FFC6")))
 
             val params = WindowManager.LayoutParams(
                 dp(168),
@@ -277,6 +339,18 @@ class OverlayController(
     /** Must be called on rotation so the HUD matches the new viewport. */
     fun onConfigurationChanged() {
         try {
+            hdrView?.let { view ->
+                hdrParams?.let { params ->
+                    val metrics = context.resources.displayMetrics
+                    params.width = metrics.widthPixels
+                    params.height = metrics.heightPixels
+                    windowManager.updateViewLayout(view, params)
+                }
+            }
+        } catch (t: Throwable) {
+            Logger.w(TAG, "HDR config change failed: ${t.message}")
+        }
+        try {
             val hud = hudView ?: return
             val params = hudParams ?: return
             val metrics = context.resources.displayMetrics
@@ -297,6 +371,12 @@ class OverlayController(
         attached = false
         closeMenu()
         try {
+            hdrView?.clearFrame()
+            hdrView?.let { windowManager.removeView(it) }
+        } catch (t: Throwable) {
+            Logger.w(TAG, "hdr detach failed: ${t.message}")
+        }
+        try {
             hudView?.let { windowManager.removeView(it) }
         } catch (t: Throwable) {
             Logger.w(TAG, "hud detach failed: ${t.message}")
@@ -307,6 +387,8 @@ class OverlayController(
             Logger.w(TAG, "puck detach failed: ${t.message}")
         } finally {
             hudView = null
+            hdrView = null
+            hdrParams = null
             puckView = null
             hudParams = null
             puckParams = null

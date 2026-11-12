@@ -13,7 +13,15 @@ import android.os.HandlerThread
 import com.dlss5.optimizer.util.Logger
 
 /**
- * TRUE DLSS path: a real screen-capture → downscale → upscale → sharpen loop.
+ * Live capture pipeline. Two real consumers share one MediaProjection:
+ *
+ *  * **HDR mode** — every captured frame goes through [HdrCompositor] (tone-map + bloom + vibrance +
+ *    unsharp, optional Lanczos upscale) and is returned full-screen for the overlay surface. This is the
+ *    "real graphics" mode: what you see on screen is the graded frame.
+ *  * **UPSCALE / TRUE DLSS** — the frame is downscaled, upscaled with bicubic/Lanczos and sharpened by
+ *    [RenderPipeline], then shown as a preview at a lower cadence.
+ *
+ * Original doc: TRUE DLSS path: a real screen-capture → downscale → upscale → sharpen loop.
  *
  * Flow:
  *   MediaProjection.virtualDisplay → ImageReader (RGBA_8888 at `captureScale` of native)
@@ -35,7 +43,12 @@ class ScreenCaptureEngine(
     private val onFrame: (Bitmap, Long) -> Unit,
     private val onFailure: (String) -> Unit,
     private val preferLanczos: Boolean = true,
-    private val maxFps: Int = 12
+    private val maxFps: Int = 12,
+    private val hdrEnabled: Boolean = false,
+    private val hdrPreset: HdrPreset = HdrPreset.GAME_VIVID,
+    private val hdrBlend: Float = 1.0f,
+    private val captureScaleOverride: Float = -1f,
+    private val upscaleOutput: Boolean = true
 ) {
 
     companion object {
@@ -48,6 +61,8 @@ class ScreenCaptureEngine(
     private var thread: HandlerThread? = null
     private var handler: Handler? = null
     private val pipeline = RenderPipeline()
+    private val compositor = HdrCompositor()
+    private var hdrReady = false
 
     private var captureWidth = 0
     private var captureHeight = 0
@@ -61,6 +76,11 @@ class ScreenCaptureEngine(
 
     fun isRunning(): Boolean = projection != null && !stopped
     fun framesEmitted(): Long = framesEmitted
+    fun hdrActive(): Boolean = hdrEnabled && hdrReady && compositor.isHealthy()
+    fun compositorCostMs(): Long = compositor.lastFrameCostMs()
+    fun setHdrPreset(preset: HdrPreset) = compositor.setPreset(preset)
+    fun setHdrBlend(blend: Float) = compositor.setBlend(blend)
+    fun setHdrEnabled(enabled: Boolean) = compositor.setEnabled(enabled)
 
     /** Starts capture. Returns false (and calls [onFailure]) instead of throwing. */
     fun start(): Boolean {
@@ -68,7 +88,13 @@ class ScreenCaptureEngine(
         return try {
             val metrics = context.resources.displayMetrics
             // Capture at 70% of native — that is the "render at reduced resolution" half of DRS.
-            val scale = profile.defaultRenderScale.coerceIn(0.5f, 0.85f)
+            // HDR mode captures at (near) full resolution: downscaling would destroy the very detail
+            // the grade exists to show. Upscale modes keep the DRS capture for the cheaper path.
+            val scale = when {
+                captureScaleOverride > 0f -> captureScaleOverride.coerceIn(0.4f, 1.0f)
+                hdrEnabled -> hdrPreset.captureScale.coerceIn(0.5f, 1.0f)
+                else -> profile.defaultRenderScale.coerceIn(0.5f, 0.85f)
+            }
             captureWidth = ((metrics.widthPixels * scale).toInt() and 0xFFFFFFFE.toInt()).coerceAtLeast(64)
             captureHeight = ((metrics.heightPixels * scale).toInt() and 0xFFFFFFFE.toInt()).coerceAtLeast(64)
             captureDensity = metrics.densityDpi
@@ -106,14 +132,25 @@ class ScreenCaptureEngine(
             )
             if (virtualDisplay == null) throw IllegalStateException("virtual display rejected")
 
-            val lanczos = preferLanczos && FilterKernels.canAffordLanczos(profile.tier, metrics.widthPixels)
-            val ok = pipeline.init(metrics.widthPixels and 0xFFFFFFFE.toInt(), metrics.heightPixels, lanczos)
-            if (!ok) throw IllegalStateException("upscale pipeline unavailable on this GPU")
+            // HDR mode owns the frame; the upscale pipeline is only needed for the DLSS modes.
+            if (hdrEnabled) {
+                hdrReady = compositor.init(
+                    captureWidth, captureHeight, hdrPreset, hdrBlend
+                )
+                if (!hdrReady) {
+                    Logger.w(TAG, "HDR compositor unavailable, continuing with raw frames")
+                }
+            }
+            if (upscaleOutput && !hdrEnabled) {
+                val lanczos = preferLanczos && FilterKernels.canAffordLanczos(profile.tier, metrics.widthPixels)
+                val ok = pipeline.init(metrics.widthPixels and 0xFFFFFFFE.toInt(), metrics.heightPixels, lanczos)
+                if (!ok) throw IllegalStateException("upscale pipeline unavailable on this GPU")
+            }
 
             Logger.i(
                 TAG,
-                "capture ${captureWidth}x$captureHeight -> ${metrics.widthPixels}x${metrics.heightPixels} " +
-                    "lanczos=$lanczos tier=${profile.tier.key}"
+                "capture ${captureWidth}x$captureHeight hdr=$hdrEnabled(${hdrPreset.id}) " +
+                    "upscale=$upscaleOutput tier=${profile.tier.key}"
             )
             true
         } catch (t: Throwable) {
@@ -139,6 +176,29 @@ class ScreenCaptureEngine(
 
             val bitmap = imageToBitmap(image) ?: return
             val started = System.nanoTime()
+
+            // HDR mode: grade the frame and present it 1:1 over the game.
+            if (hdrEnabled && hdrReady && compositor.isHealthy()) {
+                val graded = compositor.process(bitmap)
+                if (graded != null) {
+                    framesEmitted++
+                    onFrame(graded, (System.nanoTime() - started) / 1_000_000L)
+                    return
+                }
+                // Compositor died mid-session: keep showing raw frames instead of going black.
+                Logger.w(TAG, "HDR compositor failed, falling back to raw frames")
+                hdrReady = false
+                framesEmitted++
+                onFrame(bitmap, (System.nanoTime() - started) / 1_000_000L)
+                return
+            }
+            if (hdrEnabled && !hdrReady) {
+                // HDR requested but unsupported: present the raw frame so the mode still shows the game.
+                framesEmitted++
+                onFrame(bitmap, (System.nanoTime() - started) / 1_000_000L)
+                return
+            }
+
             val processed = pipeline.process(bitmap, 1.0f)
             val costMs = (System.nanoTime() - started) / 1_000_000L
             if (processed == null) {
@@ -219,6 +279,11 @@ class ScreenCaptureEngine(
             pipeline.release()
         } catch (t: Throwable) {
             Logger.w(TAG, "pipeline release: ${t.message}")
+        }
+        try {
+            compositor.release()
+        } catch (t: Throwable) {
+            Logger.w(TAG, "compositor release: ${t.message}")
         }
         try {
             handler?.removeCallbacksAndMessages(null)

@@ -19,6 +19,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import com.dlss5.optimizer.core.DeviceProfile
 import com.dlss5.optimizer.core.DeviceProfiler
+import com.dlss5.optimizer.core.HdrPreset
 import com.dlss5.optimizer.core.DlssOverlayService
 import com.dlss5.optimizer.core.SessionRecord
 import com.dlss5.optimizer.network.LocalStore
@@ -73,6 +74,14 @@ class MainActivity : AppCompatActivity() {
     private lateinit var chipGovernor: TextView
     private lateinit var chipUpscale: TextView
     private lateinit var chipTrue: TextView
+    private lateinit var chipHdr: TextView
+    private lateinit var hdrState: TextView
+    private lateinit var hdrPresetName: TextView
+    private lateinit var hdrPresetDesc: TextView
+    private lateinit var btnPrevPreset: TextView
+    private lateinit var btnNextPreset: TextView
+    private lateinit var btnToggleHdr: TextView
+    private lateinit var btnHdrBlend: TextView
     private lateinit var toggleSafe: TextView
     private lateinit var toggleTelemetry: TextView
 
@@ -120,8 +129,11 @@ class MainActivity : AppCompatActivity() {
                     captureData = result.data
                 )
                 toast(
-                    if (chosen == Prefs.MODE_TRUE_DLSS) "TRUE DLSS capture armed — minimise to your game."
-                    else "UPSCALE armed — minimise to your game."
+                    when (chosen) {
+                        Prefs.MODE_HDR -> "HDR compositor armed — minimise to PUBG."
+                        Prefs.MODE_TRUE_DLSS -> "TRUE DLSS capture armed — minimise to your game."
+                        else -> "UPSCALE armed — minimise to your game."
+                    }
                 )
             } else {
                 prefs.mode = Prefs.MODE_GOVERNOR
@@ -197,6 +209,14 @@ class MainActivity : AppCompatActivity() {
         chipGovernor = findViewById(R.id.chipGovernor)
         chipUpscale = findViewById(R.id.chipUpscale)
         chipTrue = findViewById(R.id.chipTrue)
+        chipHdr = findViewById(R.id.chipHdr)
+        hdrState = findViewById(R.id.hdrState)
+        hdrPresetName = findViewById(R.id.hdrPresetName)
+        hdrPresetDesc = findViewById(R.id.hdrPresetDesc)
+        btnPrevPreset = findViewById(R.id.btnPrevPreset)
+        btnNextPreset = findViewById(R.id.btnNextPreset)
+        btnToggleHdr = findViewById(R.id.btnToggleHdr)
+        btnHdrBlend = findViewById(R.id.btnHdrBlend)
         toggleSafe = findViewById(R.id.toggleSafe)
         toggleTelemetry = findViewById(R.id.toggleTelemetry)
     }
@@ -214,6 +234,11 @@ class MainActivity : AppCompatActivity() {
         chipGovernor.setOnClickListener { selectMode(Prefs.MODE_GOVERNOR) }
         chipUpscale.setOnClickListener { selectMode(Prefs.MODE_UPSCALE) }
         chipTrue.setOnClickListener { selectMode(Prefs.MODE_TRUE_DLSS) }
+        chipHdr.setOnClickListener { selectMode(Prefs.MODE_HDR) }
+        btnPrevPreset.setOnClickListener { stepHdrPreset(-1) }
+        btnNextPreset.setOnClickListener { stepHdrPreset(1) }
+        btnToggleHdr.setOnClickListener { toggleHdrEnabled() }
+        btnHdrBlend.setOnClickListener { cycleHdrBlend() }
         toggleSafe.setOnClickListener {
             try {
                 prefs.safeMode = !prefs.safeMode
@@ -257,6 +282,7 @@ class MainActivity : AppCompatActivity() {
             cloudLabel.text = getString(R.string.cloud_offline)
             syncModeChips()
             syncToggles()
+            syncHdrSection()
         } catch (t: Throwable) {
             Logger.w(TAG, "applyInitialState failed: ${t.message}")
         }
@@ -265,7 +291,7 @@ class MainActivity : AppCompatActivity() {
     private fun selectMode(mode: Int) {
         try {
             Haptics.confirm(this)
-            if (mode == Prefs.MODE_TRUE_DLSS || mode == Prefs.MODE_UPSCALE) {
+            if (Prefs.requiresCapture(mode)) {
                 pendingModeAfterCapture = mode
                 requestCapture()
                 return
@@ -287,6 +313,8 @@ class MainActivity : AppCompatActivity() {
             chipGovernor.isSelected = mode == Prefs.MODE_GOVERNOR
             chipUpscale.isSelected = mode == Prefs.MODE_UPSCALE
             chipTrue.isSelected = mode == Prefs.MODE_TRUE_DLSS
+            chipHdr.isSelected = mode == Prefs.MODE_HDR
+            chipHdr.setTextColor(if (mode == Prefs.MODE_HDR) Color.WHITE else Color.parseColor("#9CA89C"))
             chipGovernor.setTextColor(if (mode == Prefs.MODE_GOVERNOR) Color.WHITE else Color.parseColor("#9CA89C"))
             chipUpscale.setTextColor(if (mode == Prefs.MODE_UPSCALE) Color.WHITE else Color.parseColor("#9CA89C"))
             chipTrue.setTextColor(if (mode == Prefs.MODE_TRUE_DLSS) Color.WHITE else Color.parseColor("#9CA89C"))
@@ -405,7 +433,7 @@ class MainActivity : AppCompatActivity() {
                     busy = false
                     unlockButton()
                     when (prefs.mode) {
-                        Prefs.MODE_TRUE_DLSS, Prefs.MODE_UPSCALE -> {
+                        Prefs.MODE_TRUE_DLSS, Prefs.MODE_UPSCALE, Prefs.MODE_HDR -> {
                             pendingModeAfterCapture = prefs.mode
                             requestCapture()
                         }
@@ -486,14 +514,19 @@ class MainActivity : AppCompatActivity() {
                     fps = (prefs.lastRenderScale * prefs.targetFps).toDouble(),
                     scale = prefs.lastRenderScale,
                     stateText = "ENGINE ACTIVE",
-                    sub = SessionRecord.modeName(prefs.mode).replace('_', ' ') +
-                        " · %.2fx".format(prefs.lastRenderScale)
+                    sub = if (prefs.mode == Prefs.MODE_HDR) {
+                        activePreset().label + " · LIVE"
+                    } else {
+                        SessionRecord.modeName(prefs.mode).replace('_', ' ') +
+                            " · %.2fx".format(prefs.lastRenderScale)
+                    }
                 )
             } else {
                 ring.setIdle(prefs.lastRenderScale)
             }
             syncModeChips()
             syncToggles()
+            syncHdrSection()
             val synced = prefs.lastSyncEpoch > 0 && (Time.epochSeconds() - prefs.lastSyncEpoch) < 3600
             cloudDot.alpha = if (synced) 1f else 0.35f
             cloudLabel.text = if (synced) getString(R.string.cloud_synced) else getString(R.string.cloud_offline)
@@ -508,6 +541,84 @@ class MainActivity : AppCompatActivity() {
     }
 
     // ------------------------------------------------------------------ capture
+
+    // ------------------------------------------------------------------ HDR preset controls
+
+    private fun activePreset(): HdrPreset = HdrPreset.byId(prefs.hdrPresetId)
+
+    private fun stepHdrPreset(direction: Int) {
+        try {
+            Haptics.confirm(this)
+            val all = HdrPreset.ALL
+            val index = (HdrPreset.indexOf(prefs.hdrPresetId) + direction + all.size) % all.size
+            val preset = all[index]
+            prefs.hdrPresetId = preset.id
+            syncHdrSection()
+            if (prefs.mode == Prefs.MODE_HDR && prefs.engineRunning) {
+                // Restart capture with the new preset so the change is visible in-game immediately.
+                pendingModeAfterCapture = Prefs.MODE_HDR
+                requestCapture()
+            }
+        } catch (t: Throwable) {
+            Logger.w(TAG, "stepHdrPreset failed: ${t.message}")
+        }
+    }
+
+    private fun toggleHdrEnabled() {
+        try {
+            Haptics.confirm(this)
+            prefs.hdrEnabled = !prefs.hdrEnabled
+            syncHdrSection()
+            toast(if (prefs.hdrEnabled) "HDR grading ON" else "HDR grading OFF — raw frames")
+        } catch (t: Throwable) {
+            Logger.w(TAG, "toggleHdrEnabled failed: ${t.message}")
+        }
+    }
+
+    private fun cycleHdrBlend() {
+        try {
+            Haptics.confirm(this)
+            val next = when {
+                prefs.hdrBlend >= 0.99f -> 0.75f
+                prefs.hdrBlend >= 0.70f -> 0.50f
+                else -> 1.00f
+            }
+            prefs.hdrBlend = next
+            syncHdrSection()
+        } catch (t: Throwable) {
+            Logger.w(TAG, "cycleHdrBlend failed: ${t.message}")
+        }
+    }
+
+    private fun syncHdrSection() {
+        try {
+            val preset = activePreset()
+            hdrPresetName.text = preset.label
+            hdrPresetDesc.text = preset.description
+            btnHdrBlend.text = "BLEND ${(prefs.hdrBlend * 100).toInt()}%"
+            val live = prefs.mode == Prefs.MODE_HDR && prefs.engineRunning
+            hdrState.text = when {
+                !prefs.hdrEnabled -> "OFF"
+                live -> "LIVE"
+                else -> "READY"
+            }
+            hdrState.setTextColor(
+                when {
+                    !prefs.hdrEnabled -> Color.parseColor("#1F8F12")
+                    live -> Color.parseColor("#39FF14")
+                    else -> Color.parseColor("#9CA89C")
+                }
+            )
+            btnToggleHdr.isSelected = prefs.hdrEnabled
+            btnToggleHdr.setTextColor(
+                if (prefs.hdrEnabled) Color.parseColor("#39FF14") else Color.parseColor("#9CA89C")
+            )
+            hdrPresetName.alpha = if (prefs.hdrEnabled) 1f else 0.45f
+            hdrPresetDesc.alpha = if (prefs.hdrEnabled) 1f else 0.45f
+        } catch (t: Throwable) {
+            Logger.w(TAG, "syncHdrSection failed: ${t.message}")
+        }
+    }
 
     private fun requestCapture() {
         try {
@@ -584,11 +695,12 @@ class MainActivity : AppCompatActivity() {
             13f, Color.WHITE, bold = true
         ))
         left.addView(textView(
-            "%s · %.1f ms p95 · %.2fx · %s".format(
+            "%s · %.1f ms p95 · %.2fx · %s%s".format(
                 Time.humanDuration(session.endedAtMs - session.startedAtMs),
                 session.p95FrameMs,
                 session.finalRenderScale,
-                session.socTier.uppercase()
+                session.socTier.uppercase(),
+                session.hdrPreset?.let { " · HDR" } ?: ""
             ),
             10f, Color.parseColor("#9CA89C")
         ))

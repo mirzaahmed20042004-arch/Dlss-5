@@ -40,7 +40,8 @@ class EngineController(
         val thermal: Int,
         val mode: Int,
         val engineCostMs: Double,
-        val sessionElapsedMs: Long
+        val sessionElapsedMs: Long,
+        val hdr: Boolean = false
     )
 
     companion object {
@@ -132,7 +133,7 @@ class EngineController(
                             fps = 0.0, frameMs = 0.0, p95FrameMs = 0.0, jitterMs = 0.0,
                             renderScale = governor.currentScale(), targetFps = prefs.targetFps,
                             droppedFrames = 0, thermal = thermalStatus, mode = prefs.mode,
-                            engineCostMs = 0.0, sessionElapsedMs = 0L
+                            engineCostMs = 0.0, sessionElapsedMs = 0L, hdr = hdrActive
                         )
                     )
                 } catch (t: Throwable) {
@@ -220,7 +221,8 @@ class EngineController(
                 thermal = thermalStatus,
                 mode = prefs.mode,
                 engineCostMs = stats.engineCostMs(),
-                sessionElapsedMs = Time.nowMs() - sessionStartMs
+                sessionElapsedMs = Time.nowMs() - sessionStartMs,
+                hdr = hdrActive
             )
             lastStats = live
 
@@ -359,6 +361,7 @@ class EngineController(
                 thermalMax = stats.thermalMax(),
                 socTier = profile.tier.key,
                 lanczos = settingsLanczos,
+                hdrPreset = if (hdrActive) prefs.hdrPresetId else null,
                 engineCostMs = stats.engineCostMs()
             )
             store.appendSession(record)
@@ -371,4 +374,14 @@ class EngineController(
 
     /** Set by the overlay service when it decides which kernel the GPU can afford. */
     var settingsLanczos: Boolean = false
+
+    /** True while the HDR compositor owns the presented frames (set by the overlay service). */
+    @Volatile
+    var hdrActive: Boolean = false
+        private set
+
+    fun setHdrActive(active: Boolean) {
+        hdrActive = active
+        if (active) Logger.i(TAG, "HDR compositor active, preset=${prefs.hdrPresetId}")
+    }
 }
