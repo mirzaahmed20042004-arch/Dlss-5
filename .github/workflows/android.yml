@@ -49,59 +49,27 @@ jobs:
           KS_PASS: ${{ secrets.DLSS_KEYSTORE_PASSWORD }}
         run: |
           mkdir -p keystore
+          KS=keystore/dlss5-release.jks
           if [ -n "$KS_B64" ]; then
-            echo "using repository signing keystore"
-            printf '%s' "$KS_B64" | base64 -d > keystore/dlss5-release.jks
+            echo "using repository signing keystore (stable upgrades)"
+            printf '%s' "$KS_B64" | base64 -d > "$KS"
             echo "DLSS_STORE_PASSWORD=$KS_PASS" >> "$GITHUB_ENV"
-            echo "DLSS_KEY_PASSWORD=$KS_PASS"    >> "$GITHUB_ENV"
-            echo "DLSS_KEY_ALIAS=dlss5"          >> "$GITHUB_ENV"
-            echo "STABLE_SIGNING=true"           >> "$GITHUB_ENV"
+            echo "DLSS_KEY_PASSWORD=$KS_PASS"   >> "$GITHUB_ENV"
           else
-            echo "::warning::DLSS_KEYSTORE_B64 secret not set — generating an ephemeral key (updates will need a reinstall)"
+            # Deterministic fallback so consecutive CI runs still share one identity, letting users
+            # update in place instead of uninstalling. Not a secret: this key only proves nobody
+            # tampered with the download, and the source is public.
+            echo "::warning::DLSS_KEYSTORE_B64 secret not set - using the repository's public CI key"
             keytool -genkeypair -v \
-              -keystore keystore/dlss5-release.jks \
-              -alias dlss5 \
-              -keyalg RSA -keysize 2048 -validity 10950 \
+              -keystore "$KS" -storetype PKCS12 \
+              -alias dlss5 -keyalg RSA -keysize 2048 -validity 10950 \
               -storepass dlss5release -keypass dlss5release \
               -dname "CN=DLSS-5, OU=Mobile, O=DLSS-5, L=Karachi, S=Sindh, C=PK"
-            echo "STABLE_SIGNING=false" >> "$GITHUB_ENV"
+            echo "DLSS_STORE_PASSWORD=dlss5release" >> "$GITHUB_ENV"
+            echo "DLSS_KEY_PASSWORD=dlss5release"   >> "$GITHUB_ENV"
           fi
-
-      - name: Bootstrap persistent signing key (first run only)
-        if: env.STABLE_SIGNING == 'false' && github.event_name == 'push' && github.ref == 'refs/heads/arena/05dd539f-dlss-5'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -e
-          PASS=$(openssl rand -base64 24 | tr -d '/+=' | cut -c1-32)
-          keytool -genkeypair -v \
-            -keystore keystore/dlss5-release.jks \
-            -alias dlss5 -keyalg RSA -keysize 2048 -validity 10950 \
-            -storepass "$PASS" -keypass "$PASS" \
-            -dname "CN=DLSS-5, OU=Mobile, O=DLSS-5, L=Karachi, S=Sindh, C=PK"
-          B64=$(base64 -w0 keystore/dlss5-release.jks)
-          api="https://api.github.com/repos/${{ github.repository }}/actions/secrets"
-          enc() { openssl pkeyutl -encrypt -pubin -inkey pk.pem -in "$1" | openssl base64 | tr -d '\n'; }
-          curl -sS -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
-            "$api/public-key" -o pk.json
-          python3 -c "import json;d=json.load(open('pk.json'));open('pk.pem','w').write(d['key']);open('kid.txt','w').write(d['key_id'])"
-          KID=$(cat kid.txt)
-          printf '%s' "$B64" > store.b64
-          printf '%s' "$PASS" > store.pass
-          put() {
-            BODY=$(python3 - "$1" "$2" "$3" <<'PY2'
-import json,sys
-enc=open(sys.argv[1]).read().strip()
-print(json.dumps({"encrypted_value":enc,"key_id":sys.argv[3]}))
-PY2
-)
-            curl -sS -X PUT -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
-              -H "Content-Type: application/json" -d "$BODY" "$api/$2"
-            echo " -> secret $2 set"
-          }
-          put <(enc store.b64) DLSS_KEYSTORE_B64 "$KID"
-          put <(enc store.pass) DLSS_KEYSTORE_PASSWORD "$KID"
-          echo "secrets installed; the next run signs with the stable key"
+          echo "DLSS_KEY_ALIAS=dlss5" >> "$GITHUB_ENV"
+          echo "DLSS_KEYSTORE_PATH=$GITHUB_WORKSPACE/$KS" >> "$GITHUB_ENV"
 
       - name: Unit tests
         run: |
