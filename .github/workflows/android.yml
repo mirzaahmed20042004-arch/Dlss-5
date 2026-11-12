@@ -1,0 +1,98 @@
+name: Android CI / Release APK
+
+on:
+  push:
+    branches: [ '**' ]
+    tags: [ 'v*' ]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: 'platforms;android-34 build-tools;34.0.0 platform-tools'
+
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle.kts', 'gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: gradle-${{ runner.os }}-
+
+      - name: Generate ephemeral signing keystore
+        run: |
+          mkdir -p keystore
+          keytool -genkeypair -v \
+            -keystore keystore/dlss5-release.jks \
+            -alias dlss5 \
+            -keyalg RSA -keysize 2048 -validity 10950 \
+            -storepass dlss5release -keypass dlss5release \
+            -dname "CN=DLSS-5, OU=Mobile, O=DLSS-5, L=Karachi, S=Sindh, C=PK"
+
+      - name: Unit tests
+        run: ./gradlew --no-daemon :app:testDebugUnitTest
+
+      - name: Assemble release
+        run: ./gradlew --no-daemon :app:assembleRelease
+
+      - name: Collect artifacts
+        run: |
+          mkdir -p out
+          cp app/build/outputs/apk/release/*.apk out/DLSS-5-${{ github.run_number }}.apk 2>/dev/null || true
+          cp app/build/outputs/apk/debug/*.apk out/DLSS-5-debug-${{ github.run_number }}.apk 2>/dev/null || true
+          ls -lh out
+
+      - name: Verify APK
+        run: |
+          APK=$(ls out/DLSS-5-*.apk | head -1)
+          echo "APK=$APK"
+          "$ANDROID_SDK_ROOT/build-tools/34.0.0/aapt2" dump badging "$APK" | head -6
+          "$ANDROID_SDK_ROOT/build-tools/34.0.0/apksigner" verify --print-certs "$APK" | head -5
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dlss5-apk
+          path: out/*.apk
+          if-no-files-found: error
+
+      - name: Publish to GitHub Releases
+        if: github.event_name != 'pull_request'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || 'build-latest' }}
+          name: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || 'DLSS-5 latest build' }}
+          body: |
+            **DLSS-5** automatic build from `${{ github.ref_name }}` @ `${{ github.sha }}`.
+
+            Download `DLSS-5-*.apk` below, then install it on your Android 8.0+ phone
+            (allow "Install unknown apps" for your browser/file manager).
+
+            Build log: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          files: out/*.apk
+          fail_on_unmatched_files: true
+          prerelease: ${{ !startsWith(github.ref, 'refs/tags/v') }}

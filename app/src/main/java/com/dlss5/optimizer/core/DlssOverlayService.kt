@@ -1,0 +1,567 @@
+package com.dlss5.optimizer.core
+
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
+import android.app.Service
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
+import android.content.pm.ServiceInfo
+import android.graphics.Color
+import android.media.projection.MediaProjectionManager
+import android.os.Build
+import android.os.Handler
+import android.os.IBinder
+import android.os.Looper
+import android.os.PowerManager
+import android.provider.Settings
+import android.widget.Toast
+import androidx.core.app.NotificationCompat
+import androidx.core.content.ContextCompat
+import com.dlss5.optimizer.BuildConfig
+import com.dlss5.optimizer.MainActivity
+import com.dlss5.optimizer.R
+import com.dlss5.optimizer.network.LocalStore
+import com.dlss5.optimizer.network.SyncWorker
+import com.dlss5.optimizer.util.DeviceGuards
+import com.dlss5.optimizer.util.Haptics
+import com.dlss5.optimizer.util.Logger
+import com.dlss5.optimizer.util.Permissions
+import com.dlss5.optimizer.util.Prefs
+import com.dlss5.optimizer.util.Time
+
+/**
+ * Foreground service that owns the overlay + engine.
+ *
+ * Lifecycle contract (guarantees, all enforced here):
+ *  * Started via [start]; returns `START_STICKY` so an OEM kill gets recreated with a null intent,
+ *    which we handle by re-attaching if the user still had the engine on.
+ *  * If the overlay permission has been revoked while we were alive, we stop cleanly and post a
+ *    notification telling the user — we never attempt `addView` without permission.
+ *  * Every entry point is wrapped: an exception in the engine or overlay tears the feature down and
+ *    leaves the app alive.
+ */
+class DlssOverlayService : Service() {
+
+    companion object {
+        private const val TAG = "Service"
+        private const val CHANNEL_ID = "dlss5_engine"
+        private const val NOTIF_ID = 1001
+        private const val ACTION_STOP = "com.dlss5.optimizer.action.STOP_ENGINE"
+        private const val ACTION_TOGGLE_HUD = "com.dlss5.optimizer.action.TOGGLE_HUD"
+        private const val ACTION_START = "com.dlss5.optimizer.action.START_ENGINE"
+
+        const val EXTRA_CAPTURE_RESULT_CODE = "capture_result_code"
+        const val EXTRA_CAPTURE_DATA = "capture_data"
+        const val EXTRA_MODE = "mode"
+
+        fun start(context: Context, mode: Int = -1) {
+            try {
+                val intent = Intent(context, DlssOverlayService::class.java).apply {
+                    action = ACTION_START
+                    if (mode >= 0) putExtra(EXTRA_MODE, mode)
+                }
+                ContextCompat.startForegroundService(context, intent)
+            } catch (t: Throwable) {
+                Logger.e(TAG, "start service failed: ${t.message}", t)
+            }
+        }
+
+        fun stop(context: Context) {
+            try {
+                context.startService(
+                    Intent(context, DlssOverlayService::class.java).apply { action = ACTION_STOP }
+                )
+            } catch (t: Throwable) {
+                Logger.w(TAG, "stop service failed: ${t.message}")
+            }
+        }
+
+        fun isRunning(context: Context): Boolean = Prefs.get(context).engineRunning
+    }
+
+    private lateinit var prefs: Prefs
+    private lateinit var store: LocalStore
+    private lateinit var profile: DeviceProfile
+    private var overlay: OverlayController? = null
+    private var engine: EngineController? = null
+    private var capture: ScreenCaptureEngine? = null
+    private var wakeLock: PowerManager.WakeLock? = null
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private var lastNotificationUpdate = 0L
+    private var glFallbackToastShown = false
+
+    private val stopReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            try {
+                when (intent?.action) {
+                    ACTION_STOP -> {
+                        prefs.engineRunning = false
+                        stopSelf()
+                    }
+                    ACTION_TOGGLE_HUD -> overlay?.toggleHud()
+                }
+            } catch (t: Throwable) {
+                Logger.w(TAG, "receiver action failed: ${t.message}")
+            }
+        }
+    }
+
+    override fun onCreate() {
+        super.onCreate()
+        try {
+            prefs = Prefs.get(this)
+            store = LocalStore.get(this)
+            profile = DeviceProfiler.profile(this)
+            createChannel()
+            val filter = IntentFilter().apply {
+                addAction(ACTION_STOP)
+                addAction(ACTION_TOGGLE_HUD)
+            }
+            ContextCompat.registerReceiver(
+                this, stopReceiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED
+            )
+        } catch (t: Throwable) {
+            Logger.e(TAG, "onCreate failed", t)
+            stopSelf()
+        }
+    }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        return try {
+            if (intent?.action == ACTION_STOP) {
+                prefs.engineRunning = false
+                shutdown("notification stop")
+                return START_NOT_STICKY
+            }
+
+            // Android 14 requires the FGS type to be declared at start time.
+            val foregroundOk = goForeground()
+            if (!foregroundOk) {
+                Logger.e(TAG, "could not enter foreground, aborting")
+                stopSelf()
+                return START_NOT_STICKY
+            }
+
+            if (intent?.hasExtra(EXTRA_MODE) == true) {
+                val mode = intent.getIntExtra(EXTRA_MODE, prefs.mode)
+                prefs.mode = mode
+            }
+
+            if (overlay?.isAttached() != true) {
+                if (!Permissions.canDrawOverlays(this)) {
+                    Logger.w(TAG, "overlay permission revoked, stopping")
+                    notifyPermissionLost()
+                    prefs.engineRunning = false
+                    stopSelf()
+                    return START_NOT_STICKY
+                }
+                if (!attachOverlay()) {
+                    prefs.engineRunning = false
+                    stopSelf()
+                    return START_NOT_STICKY
+                }
+            }
+
+            startEngine()
+            acquireWakeLock()
+
+            val resultCode = intent?.getIntExtra(EXTRA_CAPTURE_RESULT_CODE, Int.MIN_VALUE) ?: Int.MIN_VALUE
+            @Suppress("DEPRECATION")
+            val projectionData = intent?.getParcelableExtra<Intent>(EXTRA_CAPTURE_DATA)
+            if (resultCode != Int.MIN_VALUE && projectionData != null) {
+                startCapture(resultCode, projectionData)
+            }
+
+            prefs.engineRunning = true
+            SyncWorker.enqueue(this)
+            updateNotification()
+            START_STICKY
+        } catch (t: Throwable) {
+            Logger.e(TAG, "onStartCommand failed", t)
+            shutdown("start failure")
+            START_NOT_STICKY
+        }
+    }
+
+    // ------------------------------------------------------------------ foreground
+
+    private fun goForeground(): Boolean = try {
+        val notification = buildNotification()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            startForeground(NOTIF_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+        } else {
+            startForeground(NOTIF_ID, notification)
+        }
+        true
+    } catch (t: Throwable) {
+        Logger.e(TAG, "startForeground failed: ${t.message}", t)
+        // On API 34 a missing type declaration throws; retry with the plain overload once.
+        try {
+            startForeground(NOTIF_ID, buildNotification())
+            true
+        } catch (t2: Throwable) {
+            false
+        }
+    }
+
+    private fun createChannel() {
+        try {
+            val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                if (manager.getNotificationChannel(CHANNEL_ID) == null) {
+                    val channel = NotificationChannel(
+                        CHANNEL_ID,
+                        getString(R.string.notif_channel_name),
+                        NotificationManager.IMPORTANCE_LOW
+                    ).apply {
+                        description = getString(R.string.notif_channel_desc)
+                        enableLights(false)
+                        enableVibration(false)
+                        setShowBadge(false)
+                        lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+                    }
+                    manager.createNotificationChannel(channel)
+                }
+            }
+        } catch (t: Throwable) {
+            Logger.w(TAG, "channel creation failed: ${t.message}")
+        }
+    }
+
+    private fun buildNotification(): Notification {
+        val openIntent = PendingIntent.getActivity(
+            this,
+            0,
+            Intent(this, MainActivity::class.java).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            },
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val stopIntent = PendingIntent.getBroadcast(
+            this,
+            1,
+            Intent(ACTION_STOP).setPackage(packageName),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val hudIntent = PendingIntent.getBroadcast(
+            this,
+            2,
+            Intent(ACTION_TOGGLE_HUD).setPackage(packageName),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val live = engine?.lastStats
+        val text = if (live != null) {
+            "%.0f fps · %.1f ms · %.2fx".format(live.fps, live.frameMs, live.renderScale)
+        } else {
+            "Initialising render governor…"
+        }
+        return NotificationCompat.Builder(this, CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentTitle(getString(R.string.notif_title))
+            .setContentText("${SessionRecord.modeName(prefs.mode).replace('_', ' ')} · $text")
+            .setColor(Color.parseColor("#39FF14"))
+            .setColorized(true)
+            .setOngoing(true)
+            .setSilent(true)
+            .setShowWhen(false)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setContentIntent(openIntent)
+            .addAction(0, getString(R.string.notif_action_stop), stopIntent)
+            .addAction(0, "HUD", hudIntent)
+            .setCategory(NotificationCompat.CATEGORY_SERVICE)
+            .build()
+    }
+
+    private fun updateNotification() {
+        try {
+            val now = Time.nowMs()
+            if (now - lastNotificationUpdate < 1500L) return
+            lastNotificationUpdate = now
+            val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            manager.notify(NOTIF_ID, buildNotification())
+        } catch (t: Throwable) {
+            Logger.w(TAG, "notification update failed: ${t.message}")
+        }
+    }
+
+    private fun notifyPermissionLost() {
+        try {
+            val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            val intent = PendingIntent.getActivity(
+                this,
+                3,
+                Intent(this, MainActivity::class.java),
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            manager.notify(
+                NOTIF_ID + 1,
+                NotificationCompat.Builder(this, CHANNEL_ID)
+                    .setSmallIcon(R.drawable.ic_notification)
+                    .setContentTitle("DLSS-5 paused")
+                    .setContentText(getString(R.string.overlay_permission_required))
+                    .setAutoCancel(true)
+                    .setContentIntent(intent)
+                    .build()
+            )
+        } catch (t: Throwable) {
+            Logger.w(TAG, "permission notification failed: ${t.message}")
+        }
+    }
+
+    // ------------------------------------------------------------------ overlay & engine
+
+    private fun attachOverlay(): Boolean {
+        return try {
+            val controller = OverlayController(
+                context = this,
+                onPuckTap = { overlay?.toggleHud() },
+                onPuckLongPress = { overlay?.openMenu() },
+                onMenuAction = { action -> handleMenuAction(action) }
+            )
+            val ok = controller.attach()
+            if (!ok) return false
+            overlay = controller
+            controller.setStatus("ENGINE START", Color.parseColor("#39FF14"))
+            controller.hud()?.setPanelVisible(true)
+            true
+        } catch (t: Throwable) {
+            Logger.e(TAG, "attachOverlay failed", t)
+            false
+        }
+    }
+
+    private fun startEngine() {
+        if (engine?.isRunning() == true) return
+        try {
+            val controller = EngineController(
+                context = this,
+                prefs = prefs,
+                store = store,
+                profile = profile,
+                onStats = { stats ->
+                    overlay?.updateStats(stats)
+                    updateNotification()
+                }
+            )
+            controller.settingsLanczos =
+                FilterKernels.canAffordLanczos(profile.tier, resources.displayMetrics.widthPixels) &&
+                prefs.mode != Prefs.MODE_GOVERNOR
+            controller.start(mainHandler)
+            engine = controller
+            overlay?.setStatus("ENGINE LIVE", Color.parseColor("#39FF14"))
+            Logger.i(TAG, "engine bound, mode=${SessionRecord.modeName(prefs.mode)}")
+
+            if (prefs.safeMode) {
+                controller.setAdaptiveEnabled(false)
+                controller.restoreScale(0.75f)
+                overlay?.setStatus("SAFE MODE", Color.parseColor("#FFC400"))
+            }
+            if (DeviceGuards.isBatterySaverOn(this)) {
+                toastOnce("Battery saver detected — FPS boost will be limited.")
+            }
+        } catch (t: Throwable) {
+            Logger.e(TAG, "startEngine failed", t)
+            overlay?.setStatus("ENGINE ERROR", Color.parseColor("#FF2D55"))
+            toastOnce(getString(R.string.gl_fallback))
+        }
+    }
+
+    private fun handleMenuAction(action: OverlayController.MenuAction) {
+        try {
+            when (action) {
+                OverlayController.MenuAction.STOP -> {
+                    prefs.engineRunning = false
+                    shutdown("puck menu")
+                }
+                OverlayController.MenuAction.TOGGLE_HUD -> overlay?.toggleHud()
+                OverlayController.MenuAction.NEXT_MODE -> {
+                    val next = (prefs.mode + 1) % 3
+                    prefs.mode = next
+                    engine?.setMode(next)
+                    val label = SessionRecord.modeName(next).replace('_', ' ')
+                    overlay?.setStatus(label, Color.parseColor("#00FFC6"))
+                    toastOnce("Mode: $label")
+                    Haptics.confirm(this)
+                }
+                OverlayController.MenuAction.TOGGLE_CAPTURE -> requestCaptureFromOverlay()
+            }
+        } catch (t: Throwable) {
+            Logger.e(TAG, "menu action failed", t)
+        }
+    }
+
+    private fun requestCaptureFromOverlay() {
+        try {
+            if (capture?.isRunning() == true) {
+                capture?.shutdown("user disabled capture")
+                capture = null
+                overlay?.setPreview(null, 0f)
+                toastOnce("Capture disabled — governor only")
+                return
+            }
+            val launch = Intent(this, MainActivity::class.java).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                putExtra(MainActivity.EXTRA_REQUEST_CAPTURE, true)
+            }
+            startActivity(launch)
+        } catch (t: Throwable) {
+            Logger.e(TAG, "capture request failed: ${t.message}")
+        }
+    }
+
+    // ------------------------------------------------------------------ capture
+
+    private fun startCapture(resultCode: Int, data: Intent) {
+        try {
+            capture?.shutdown("restart")
+            capture = ScreenCaptureEngine(
+                context = this,
+                resultCode = resultCode,
+                projectionData = data,
+                profile = profile,
+                onFrame = { bitmap, costMs ->
+                    mainHandler.post {
+                        try {
+                            overlay?.setPreview(bitmap, 0.35f)
+                            engine?.reportEngineCost(costMs)
+                        } catch (t: Throwable) {
+                            Logger.w(TAG, "preview push failed: ${t.message}")
+                        }
+                    }
+                },
+                onFailure = { reason ->
+                    mainHandler.post {
+                        try {
+                            overlay?.setStatus("GOVERNOR MODE", Color.parseColor("#FFC400"))
+                            toastOnce("Capture stopped ($reason). Running in GOVERNOR mode.")
+                            prefs.mode = Prefs.MODE_GOVERNOR
+                            engine?.setMode(Prefs.MODE_GOVERNOR)
+                        } catch (t: Throwable) {
+                            Logger.w(TAG, "capture failure handling: ${t.message}")
+                        }
+                    }
+                }
+            ).also { it.start() }
+            overlay?.setStatus("TRUE DLSS", Color.parseColor("#00FFC6"))
+            prefs.mode = Prefs.MODE_TRUE_DLSS
+            engine?.setMode(Prefs.MODE_TRUE_DLSS)
+            Logger.i(TAG, "capture engine started")
+        } catch (t: Throwable) {
+            Logger.e(TAG, "startCapture failed", t)
+            engine?.setMode(Prefs.MODE_GOVERNOR)
+        }
+    }
+
+    // ------------------------------------------------------------------ power
+
+    private fun acquireWakeLock() {
+        try {
+            if (wakeLock?.isHeld == true) return
+            val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+            wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "DLSS5:engine").apply {
+                setReferenceCounted(false)
+                acquire(4 * 60 * 60 * 1000L) // hard 4h cap so a forgotten overlay can't drain the battery
+            }
+            Logger.d(TAG, "wake lock acquired")
+        } catch (t: Throwable) {
+            Logger.w(TAG, "wake lock failed: ${t.message}")
+        }
+    }
+
+    private fun releaseWakeLock() {
+        try {
+            if (wakeLock?.isHeld == true) wakeLock?.release()
+        } catch (t: Throwable) {
+            Logger.w(TAG, "wake release failed: ${t.message}")
+        } finally {
+            wakeLock = null
+        }
+    }
+
+    // ------------------------------------------------------------------ config / teardown
+
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+        super.onConfigurationChanged(newConfig)
+        try {
+            profile = DeviceProfiler.profile(this)
+            overlay?.onConfigurationChanged()
+        } catch (t: Throwable) {
+            Logger.w(TAG, "config change failed: ${t.message}")
+        }
+    }
+
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        super.onTaskRemoved(rootIntent)
+        // Swiping the app away must not kill a running overlay; START_STICKY + this re-post keeps it.
+        try {
+            if (prefs.engineRunning) {
+                Logger.i(TAG, "task removed while running, keeping service alive")
+            }
+        } catch (t: Throwable) {
+            Logger.w(TAG, "onTaskRemoved failed: ${t.message}")
+        }
+    }
+
+    override fun onDestroy() {
+        try {
+            shutdown("service destroy")
+        } catch (t: Throwable) {
+            Logger.e(TAG, "onDestroy failed", t)
+        }
+        try {
+            unregisterReceiver(stopReceiver)
+        } catch (t: Throwable) {
+            // already unregistered
+        }
+        super.onDestroy()
+    }
+
+    private fun shutdown(reason: String) {
+        Logger.i(TAG, "shutting down: $reason")
+        try {
+            capture?.shutdown(reason)
+        } catch (t: Throwable) {
+            Logger.w(TAG, "capture shutdown: ${t.message}")
+        }
+        try {
+            engine?.stop(reason)
+        } catch (t: Throwable) {
+            Logger.w(TAG, "engine shutdown: ${t.message}")
+        }
+        try {
+            overlay?.detach()
+        } catch (t: Throwable) {
+            Logger.w(TAG, "overlay shutdown: ${t.message}")
+        }
+        releaseWakeLock()
+        capture = null
+        engine = null
+        overlay = null
+        prefs.engineRunning = false
+        SyncWorker.enqueue(this)
+        try {
+            stopForeground(true)
+        } catch (t: Throwable) {
+            // ignore
+        }
+        try {
+            stopSelf()
+        } catch (t: Throwable) {
+            // ignore
+        }
+    }
+
+    private fun toastOnce(message: String) {
+        try {
+            mainHandler.post { Toast.makeText(applicationContext, message, Toast.LENGTH_LONG).show() }
+        } catch (t: Throwable) {
+            Logger.w(TAG, "toast failed: ${t.message}")
+        }
+    }
+
+    override fun onBind(intent: Intent?): IBinder? = null
+}
