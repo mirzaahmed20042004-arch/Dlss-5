@@ -18,6 +18,16 @@ import kotlin.math.max
 /**
  * Real-time HDR / colour-grade compositor.
  *
+ * Rendering contract — **correction layer, not screen replacement.**
+ *
+ * MediaProjection captures the whole display, *including our own overlay*. If we replaced the screen with
+ * an opaque graded copy, each captured frame would contain the previous grade and the image would
+ * compound into a feedback tunnel. Instead this compositor emits a **per-pixel alpha correction layer**:
+ * for every pixel it solves `src` such that `src·A + game·(1−A) = graded`. The system compositor then
+ * blends that layer over the real game frame. Because `A ≈ 0.33` the loop gain is `1−A`, so successive
+ * frames converge geometrically onto the requested grade — a stable fixed point instead of a runaway
+ * recursion. The game itself is never replaced, so latency, sharpness and touch are untouched.
+ *
  * Pipeline per frame (all on the GPU, one EGL context, no window surface):
  *
  *   RGBA capture
@@ -70,6 +80,9 @@ class HdrCompositor {
     private var preset: HdrPreset = HdrPreset.GAME_VIVID
     private var blend = 1f
     private var enabled = true
+
+    /** Fixed compositing alpha for the correction layer. Lower = softer but cheaper to converge. */
+    private var correctionAlpha = 0.34f
 
     private val quad: FloatBuffer = ByteBuffer
         .allocateDirect(8 * 4).order(ByteOrder.nativeOrder())
@@ -145,6 +158,7 @@ class HdrCompositor {
         uniform float uBloomStrength;
         uniform float uSharpen;
         uniform float uBlend;
+        uniform float uAlpha;
 
         vec3 linearize(vec3 c) {
             // cheap sRGB -> linear approximation (gamma 2.2 is accurate enough and branchless)
@@ -200,7 +214,15 @@ class HdrCompositor {
             vec3 sharpened = graded + uSharpen * (graded * 4.0 - l - r - u - d);
 
             // blend against the untouched frame so the user can dial the effect down
-            gl_FragColor = vec4(mix(original, clamp(sharpened, 0.0, 1.0), uBlend), 1.0);
+            vec3 target = mix(original, clamp(sharpened, 0.0, 1.0), uBlend);
+
+            // Solve the src-over equation for the colour that must be laid on top:
+            //   target = src * A + original * (1 - A)   =>   src = (target - original * (1 - A)) / A
+            float a = clamp(uAlpha, 0.05, 0.95);
+            vec3 src = (target - original * (1.0 - a)) / a;
+            // out-of-gamut corrections simply clamp; the remaining delta is applied on later frames,
+            // which is exactly what makes the feedback loop converge instead of blowing up.
+            gl_FragColor = vec4(clamp(src, 0.0, 1.0), a);
         }
     """.trimIndent()
 
@@ -220,6 +242,12 @@ class HdrCompositor {
     fun setEnabled(value: Boolean) {
         enabled = value
     }
+
+    fun setCorrectionAlpha(alpha: Float) {
+        correctionAlpha = alpha.coerceIn(0.12f, 0.6f)
+    }
+
+    fun correctionAlpha(): Float = correctionAlpha
 
     /** Creates the context and programs. Must be called from the thread that will render. */
     fun init(width: Int, height: Int, initialPreset: HdrPreset, initialBlend: Float): Boolean {
@@ -358,7 +386,8 @@ class HdrCompositor {
      * Grades one captured frame.
      *
      * @param input RGBA_8888 bitmap from the capture engine (same size as [width] x [height]).
-     * @return the graded bitmap, or null if the compositor is unhealthy / disabled.
+     * @return an ARGB bitmap holding the **correction layer** (per-pixel alpha = [correctionAlpha]),
+     *         ready to be drawn src-over the live game, or null if unhealthy / disabled.
      */
     fun process(input: Bitmap): Bitmap? {
         if (!healthy.get() || !initialized || !enabled) return null
@@ -431,6 +460,7 @@ class HdrCompositor {
                 setFloat(compositeProgram, "uBloomStrength", preset.bloom)
                 setFloat(compositeProgram, "uSharpen", preset.sharpen)
                 setFloat(compositeProgram, "uBlend", blend)
+                setFloat(compositeProgram, "uAlpha", correctionAlpha)
                 setVec2(compositeProgram, "uFlip", 1f, 1f)
                 drawQuad(compositeProgram)
             }

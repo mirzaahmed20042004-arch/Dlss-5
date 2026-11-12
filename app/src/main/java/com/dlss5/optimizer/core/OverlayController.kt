@@ -79,8 +79,9 @@ class OverlayController(
     }
 
     /**
-     * The live-HDR presentation layer: full-screen, opaque, NOT touchable, added before the HUD so it
+     * The live-HDR correction layer: full-screen, TRANSLUCENT, NOT touchable, added before the HUD so it
      * sits underneath the stats panel. Hidden until the capture engine delivers its first graded frame.
+     * Translucency is mandatory: an opaque layer would be captured by MediaProjection and compound.
      */
     private fun attachHdrLayer() {
         val view = HdrSurfaceView(context)
@@ -93,9 +94,8 @@ class OverlayController(
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
                 WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
-                WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED or
-                WindowManager.LayoutParams.FLAG_FULLSCREEN,
-            PixelFormat.OPAQUE
+                WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
+            PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.START
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {

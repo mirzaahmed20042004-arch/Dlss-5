@@ -43,11 +43,12 @@ class ScreenCaptureEngine(
     private val onFrame: (Bitmap, Long) -> Unit,
     private val onFailure: (String) -> Unit,
     private val preferLanczos: Boolean = true,
-    private val maxFps: Int = 12,
+    private val maxFps: Int = 30,
     private val hdrEnabled: Boolean = false,
-    private val hdrPreset: HdrPreset = HdrPreset.GAME_VIVID,
+    private val hdrPreset: HdrPreset = HdrPreset.EXTREME_HDR,
     private val hdrBlend: Float = 1.0f,
     private val captureScaleOverride: Float = -1f,
+    private val useFeedbackNeutralisation: Boolean = true,
     private val upscaleOutput: Boolean = true
 ) {
 
@@ -63,6 +64,7 @@ class ScreenCaptureEngine(
     private val pipeline = RenderPipeline()
     private val compositor = HdrCompositor()
     private var hdrReady = false
+    private var hdrUnavailableReported = false
 
     private var captureWidth = 0
     private var captureHeight = 0
@@ -177,9 +179,14 @@ class ScreenCaptureEngine(
             val bitmap = imageToBitmap(image) ?: return
             val started = System.nanoTime()
 
-            // HDR mode: grade the frame and present it 1:1 over the game.
+            // HDR mode: build the correction layer and flatten our previous layer out of the capture so
+            // the feedback loop converges on the requested grade instead of compounding.
             if (hdrEnabled && hdrReady && compositor.isHealthy()) {
+                if (useFeedbackNeutralisation) {
+                    neutraliseCorrection(bitmap, compositor.correctionAlpha())
+                }
                 val graded = compositor.process(bitmap)
+                if (graded != null) lastCorrection = graded
                 if (graded != null) {
                     framesEmitted++
                     onFrame(graded, (System.nanoTime() - started) / 1_000_000L)
@@ -193,9 +200,13 @@ class ScreenCaptureEngine(
                 return
             }
             if (hdrEnabled && !hdrReady) {
-                // HDR requested but unsupported: present the raw frame so the mode still shows the game.
-                framesEmitted++
-                onFrame(bitmap, (System.nanoTime() - started) / 1_000_000L)
+                // HDR requested but the shader could not start. Never push raw frames to the HDR layer:
+                // an opaque copy of the game would be captured again and compound. Report once and let
+                // the service fall back to GOVERNOR mode.
+                if (!hdrUnavailableReported) {
+                    hdrUnavailableReported = true
+                    onFailure("hdr shader unavailable")
+                }
                 return
             }
 
@@ -298,6 +309,7 @@ class ScreenCaptureEngine(
             thread = null
             reusable = null
             croppedBuffer = null
+            lastCorrection = null
         }
     }
 }

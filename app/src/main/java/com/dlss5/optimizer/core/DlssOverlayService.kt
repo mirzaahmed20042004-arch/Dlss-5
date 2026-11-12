@@ -499,7 +499,9 @@ class DlssOverlayService : Service() {
                             overlay?.submitHdrFrame(bitmap, costMs)
                             overlay?.setHdrVisible(true)
                         } else {
-                            overlay?.setPreview(bitmap, 0.35f)
+                            // Preview of the upscale chain, deliberately faint so the real game stays
+                            // dominant (an opaque copy would be re-captured by MediaProjection).
+                            overlay?.setPreview(bitmap, 0.22f)
                         }
                         engine?.reportEngineCost(costMs)
                         hdrFrames++

@@ -15,9 +15,12 @@ import com.dlss5.optimizer.util.Logger
 /**
  * The LIVE HDR presentation surface.
  *
- * Draws the graded frame edge-to-edge, completely opaque, filling the screen. The window is
- * `FLAG_NOT_TOUCHABLE`, so the game underneath still receives every touch while the user sees the
- * colour-graded result. A small badge shows the active preset + measured pipeline cost.
+ * Draws the **correction layer** produced by [com.dlss5.optimizer.core.HdrCompositor] edge-to-edge on a
+ * transparent window: the game below keeps rendering and receiving touches, while this layer pushes its
+ * pixels toward the graded look. Alpha comes from the bitmap itself (per-pixel), so nothing here forces
+ * an opaque replacement — which is what keeps the capture loop convergent instead of recursive.
+ *
+ * The window is `FLAG_NOT_TOUCHABLE`; a small badge shows the active preset and pipeline cost.
  *
  * Triple buffering: the capture thread writes [next], the UI thread draws [current]; the buffer that
  * scrolls out is recycled only when safe, keeping allocation at ~zero during a session.
@@ -59,7 +62,8 @@ class HdrSurfaceView(context: Context) : View(context) {
         isClickable = false
         isFocusable = false
         importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO
-        setBackgroundColor(Color.BLACK)
+        // Transparent window: the game must stay visible underneath the correction layer.
+        setBackgroundColor(Color.TRANSPARENT)
     }
 
     fun isShowing(): Boolean = visible
@@ -118,9 +122,8 @@ class HdrSurfaceView(context: Context) : View(context) {
                 dstRect.set(0, 0, width, height)
                 canvas.drawBitmap(bmp, srcRect, dstRect, bitmapPaint)
                 framesDrawn++
-            } else {
-                canvas.drawColor(Color.BLACK)
             }
+            // No frame yet → draw nothing at all so the game shows through untouched.
             drawBadge(canvas)
         } catch (t: Throwable) {
             Logger.w(TAG, "draw failed: ${t.message}")
