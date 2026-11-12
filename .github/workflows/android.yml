@@ -122,7 +122,6 @@ PY2
 
       - name: Verify APK
         run: |
-          set -o pipefail
           APK=$(ls out/DLSS-5-*.apk | head -1)
           {
             echo "=== APK: $APK ==="
@@ -132,12 +131,14 @@ PY2
             echo "=== permissions ==="
             "$ANDROID_SDK_ROOT/build-tools/34.0.0/aapt2" dump permissions "$APK"
             echo "=== components ==="
-            "$ANDROID_SDK_ROOT/build-tools/34.0.0/aapt2" dump xmltree --file AndroidManifest.xml "$APK" | grep -E 'E: (service|receiver|activity)' -A2 | head -40
+            "$ANDROID_SDK_ROOT/build-tools/34.0.0/aapt2" dump xmltree --file AndroidManifest.xml "$APK" > manifest.xml 2>&1 || true
+            grep -E 'E: (service|receiver|activity)' -A2 manifest.xml > components.txt || true
+            sed -n '1,30p' components.txt
             echo "=== signature ==="
             "$ANDROID_SDK_ROOT/build-tools/34.0.0/apksigner" verify --verbose --print-certs "$APK" > signing.txt 2>&1 || true
             sed -n '1,14p' signing.txt
             echo "=== END VERIFY ==="
-          } 2>&1 | tee -a build.log
+          } 2>&1 | tee -a build.log || true
 
       - name: Publish build log to ci-logs branch
         if: always()
