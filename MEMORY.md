@@ -37,9 +37,19 @@
   stored in prefs) is the owner key, and RLS policies scope rows to `device_id` sent via a custom header.
   Why: no login UI in a one-button optimizer. Trade-off: device_id is a bearer credential — acceptable for
   non-sensitive numeric telemetry; documented in `docs/PRIVACY.md`.
-* 2026-11-12 — CI: GitHub Actions `ubuntu-latest` + `android-actions/setup-android`; release APK signed with
-  a keystore generated in-workflow (if no repo secrets) so the APK is installable. Documented in
-  `docs/BUILD.md`.
+* 2026-11-12 — CI: GitHub Actions `ubuntu-latest` + `android-actions/setup-android`; release APK signed in
+  workflow. A repository secret (`DLSS_KEYSTORE_B64`/`DLSS_KEYSTORE_PASSWORD`) takes precedence; when it
+  is absent CI falls back to a *deterministic* PKCS12 key (alias `dlss5`, pass `dlss5release`) so
+  consecutive builds keep one identity and users can update in place. Documented in `docs/BUILD.md`.
+* 2026-11-12 — **APK delivery triple-path:** GitHub Release asset (`build-latest`), committed copy at
+  `dist/DLSS-5.apk` (pushed by CI with `[skip ci]`), and the Actions artifact. Why: the release link is
+  the "direct download" a user expects, the committed file survives release churn, and the artifact helps
+  forks.
+* 2026-11-12 — **GL history ping-pong, not a feedback loop.** The temporal blend renders into a third
+  texture and then swaps `prev`/`next`. Rendering into a texture you sample is undefined in GLES and was
+  caught in review before shipping.
+* 2026-11-12 — **UPSCALE vs TRUE DLSS are genuinely different paths** (bicubic@20 fps vs Lanczos-3@12 fps),
+  both fed by MediaProjection, so mode selection means something measurable.
 
 ## Known constraints
 
