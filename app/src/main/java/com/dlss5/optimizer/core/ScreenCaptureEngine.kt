@@ -230,6 +230,54 @@ class ScreenCaptureEngine(
         }
     }
 
+    /** Last correction layer we pushed to the overlay, used by [neutraliseCorrection]. */
+    @Volatile
+    private var lastCorrection: Bitmap? = null
+
+    /** Reusable scratch buffers so per-frame neutralisation allocates nothing after warm-up. */
+    private var observedPixels = IntArray(0)
+    private var layerPixels = IntArray(0)
+
+    /**
+     * The compositor needs the *uncorrected* game frame. The captured buffer already contains our own
+     * correction layer (unavoidable with MediaProjection), so we flatten it out:
+     * `game ≈ (observed − α·layer) / (1 − α)` for every pixel the layer actually covers. Applying that
+     * inverse is what gives the loop its converge-to-target behaviour instead of a colour runaway.
+     */
+    private fun neutraliseCorrection(buffer: Bitmap, alpha: Float) {
+        try {
+            if (alpha <= 0.01f) return
+            val correction = lastCorrection ?: return
+            if (correction.isRecycled) return
+            if (correction.width != buffer.width || correction.height != buffer.height) return
+
+            val count = buffer.width * buffer.height
+            if (observedPixels.size != count) observedPixels = IntArray(count)
+            if (layerPixels.size != count) layerPixels = IntArray(count)
+
+            buffer.getPixels(observedPixels, 0, buffer.width, 0, 0, buffer.width, buffer.height)
+            correction.getPixels(layerPixels, 0, correction.width, 0, 0, correction.width, correction.height)
+
+            val gain = 1f / (1f - alpha)
+            for (i in 0 until count) {
+                val layerColor = layerPixels[i]
+                val layerAlpha = ((layerColor ushr 24) and 0xFF) / 255f
+                if (layerAlpha < 0.01f) continue
+                val observed = observedPixels[i]
+                val r = (((observed shr 16) and 0xFF) - layerAlpha * ((layerColor shr 16) and 0xFF)) * gain
+                val g = (((observed shr 8) and 0xFF) - layerAlpha * ((layerColor shr 8) and 0xFF)) * gain
+                val b = ((observed and 0xFF) - layerAlpha * (layerColor and 0xFF)) * gain
+                observedPixels[i] = (0xFF shl 24) or
+                    (r.toInt().coerceIn(0, 255) shl 16) or
+                    (g.toInt().coerceIn(0, 255) shl 8) or
+                    b.toInt().coerceIn(0, 255)
+            }
+            buffer.setPixels(observedPixels, 0, buffer.width, 0, 0, buffer.width, buffer.height)
+        } catch (t: Throwable) {
+            Logger.w(TAG, "correction neutralise failed: ${t.message}")
+        }
+    }
+
     /** Copies an RGBA_8888 [Image] into a reusable Bitmap, handling row padding correctly. */
     private fun imageToBitmap(image: Image): Bitmap? {
         val plane = image.planes.getOrNull(0) ?: return null
