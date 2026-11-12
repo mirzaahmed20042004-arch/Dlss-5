@@ -72,10 +72,21 @@ jobs:
 
       - name: Verify APK
         run: |
+          set -o pipefail
           APK=$(ls out/DLSS-5-*.apk | head -1)
-          echo "APK=$APK"
-          "$ANDROID_SDK_ROOT/build-tools/34.0.0/aapt2" dump badging "$APK" | head -6
-          "$ANDROID_SDK_ROOT/build-tools/34.0.0/apksigner" verify --print-certs "$APK" | head -5
+          {
+            echo "=== APK: $APK ==="
+            ls -l "$APK"
+            echo "=== badging ==="
+            "$ANDROID_SDK_ROOT/build-tools/34.0.0/aapt2" dump badging "$APK" | head -8
+            echo "=== permissions ==="
+            "$ANDROID_SDK_ROOT/build-tools/34.0.0/aapt2" dump permissions "$APK"
+            echo "=== components ==="
+            "$ANDROID_SDK_ROOT/build-tools/34.0.0/aapt2" dump xmltree --file AndroidManifest.xml "$APK" | grep -E 'E: (service|receiver|activity)' -A2 | head -40
+            echo "=== signature ==="
+            "$ANDROID_SDK_ROOT/build-tools/34.0.0/apksigner" verify --verbose --print-certs "$APK" | head -12
+            echo "=== END VERIFY ==="
+          } 2>&1 | tee -a build.log
 
       - name: Publish build log to ci-logs branch
         if: always()
