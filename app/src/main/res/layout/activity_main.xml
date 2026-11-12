@@ -48,7 +48,7 @@
                     android:textStyle="bold" />
 
                 <TextView
-                    style="@style/Text.Label"
+                    style="@style/TextLabel"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="@string/app_tagline" />
@@ -63,7 +63,7 @@
 
             <TextView
                 android:id="@+id/cloudLabel"
-                style="@style/Text.Label"
+                style="@style/TextLabel"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="@string/cloud_offline" />
@@ -116,7 +116,7 @@
         <!-- Engage button -->
         <TextView
             android:id="@+id/btnEngage"
-            style="@style/Button.Neon"
+            style="@style/ButtonNeon"
             android:layout_width="match_parent"
             android:layout_height="66dp"
             android:layout_marginTop="18dp"
@@ -141,7 +141,7 @@
             android:orientation="horizontal">
 
             <LinearLayout
-                style="@style/Card.Neon"
+                style="@style/CardNeon"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_marginEnd="6dp"
@@ -149,21 +149,21 @@
                 android:orientation="vertical">
 
                 <TextView
-                    style="@style/Text.Label"
+                    style="@style/TextLabel"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="@string/stat_target_fps" />
 
                 <TextView
                     android:id="@+id/statTarget"
-                    style="@style/Text.Metric"
+                    style="@style/TextMetric"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="60" />
             </LinearLayout>
 
             <LinearLayout
-                style="@style/Card.Neon"
+                style="@style/CardNeon"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_marginStart="6dp"
@@ -171,14 +171,14 @@
                 android:orientation="vertical">
 
                 <TextView
-                    style="@style/Text.Label"
+                    style="@style/TextLabel"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="@string/stat_render_scale" />
 
                 <TextView
                     android:id="@+id/statScale"
-                    style="@style/Text.Metric"
+                    style="@style/TextMetric"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="0.70×" />
@@ -192,7 +192,7 @@
             android:orientation="horizontal">
 
             <LinearLayout
-                style="@style/Card.Neon"
+                style="@style/CardNeon"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_marginEnd="6dp"
@@ -200,21 +200,21 @@
                 android:orientation="vertical">
 
                 <TextView
-                    style="@style/Text.Label"
+                    style="@style/TextLabel"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="@string/stat_frame_time" />
 
                 <TextView
                     android:id="@+id/statFrame"
-                    style="@style/Text.Metric"
+                    style="@style/TextMetric"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="-- ms" />
             </LinearLayout>
 
             <LinearLayout
-                style="@style/Card.Neon"
+                style="@style/CardNeon"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_marginStart="6dp"
@@ -222,14 +222,14 @@
                 android:orientation="vertical">
 
                 <TextView
-                    style="@style/Text.Label"
+                    style="@style/TextLabel"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="@string/stat_thermal" />
 
                 <TextView
                     android:id="@+id/statThermal"
-                    style="@style/Text.Metric"
+                    style="@style/TextMetric"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="NONE" />
@@ -238,7 +238,7 @@
 
         <!-- Mode chips -->
         <TextView
-            style="@style/Text.Label"
+            style="@style/TextLabel"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="22dp"
@@ -252,7 +252,7 @@
 
             <TextView
                 android:id="@+id/chipGovernor"
-                style="@style/Chip.Neon"
+                style="@style/ChipNeon"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
@@ -260,7 +260,7 @@
 
             <TextView
                 android:id="@+id/chipUpscale"
-                style="@style/Chip.Neon"
+                style="@style/ChipNeon"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_marginStart="8dp"
@@ -269,7 +269,7 @@
 
             <TextView
                 android:id="@+id/chipTrue"
-                style="@style/Chip.Neon"
+                style="@style/ChipNeon"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_marginStart="8dp"
@@ -286,7 +286,7 @@
 
             <TextView
                 android:id="@+id/toggleSafe"
-                style="@style/Chip.Neon"
+                style="@style/ChipNeon"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
@@ -294,7 +294,7 @@
 
             <TextView
                 android:id="@+id/toggleTelemetry"
-                style="@style/Chip.Neon"
+                style="@style/ChipNeon"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_marginStart="8dp"
@@ -304,14 +304,14 @@
 
         <!-- Device card -->
         <LinearLayout
-            style="@style/Card.Neon"
+            style="@style/CardNeon"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="18dp"
             android:orientation="vertical">
 
             <TextView
-                style="@style/Text.Label"
+                style="@style/TextLabel"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="DEVICE PROFILE" />
@@ -337,7 +337,7 @@
 
         <!-- History -->
         <TextView
-            style="@style/Text.Label"
+            style="@style/TextLabel"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="22dp"
@@ -363,7 +363,7 @@
 
         <TextView
             android:id="@+id/footerText"
-            style="@style/Text.Label"
+            style="@style/TextLabel"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="24dp"
