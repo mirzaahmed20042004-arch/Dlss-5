@@ -54,10 +54,14 @@ jobs:
             -dname "CN=DLSS-5, OU=Mobile, O=DLSS-5, L=Karachi, S=Sindh, C=PK"
 
       - name: Unit tests
-        run: ./gradlew --no-daemon :app:testDebugUnitTest
+        run: |
+          set -o pipefail
+          ./gradlew --no-daemon --stacktrace :app:testDebugUnitTest 2>&1 | tee build.log
 
       - name: Assemble release
-        run: ./gradlew --no-daemon :app:assembleRelease
+        run: |
+          set -o pipefail
+          ./gradlew --no-daemon --stacktrace :app:assembleRelease 2>&1 | tee -a build.log
 
       - name: Collect artifacts
         run: |
@@ -72,6 +76,14 @@ jobs:
           echo "APK=$APK"
           "$ANDROID_SDK_ROOT/build-tools/34.0.0/aapt2" dump badging "$APK" | head -6
           "$ANDROID_SDK_ROOT/build-tools/34.0.0/apksigner" verify --print-certs "$APK" | head -5
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: build.log
+          if-no-files-found: ignore
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
