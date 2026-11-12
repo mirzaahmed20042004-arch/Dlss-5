@@ -1,7 +1,6 @@
 package com.dlss5.optimizer
 
 import com.dlss5.optimizer.core.HdrPreset
-import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
@@ -31,15 +30,28 @@ class HdrPresetTest {
     }
 
     @Test
-    fun `garbage remote config cannot break a preset`() {
-        val wild = JSONObject()
-            .put("exposure", 99.0)
-            .put("saturation", -5.0)
-            .put("bloom", 40.0)
-        val result = HdrPreset.withRemote(HdrPreset.GAME_VIVID, wild)
-        assertTrue(result.exposure <= 1.6f)
-        assertTrue(result.saturation >= 0.6f)
-        assertTrue(result.bloom <= 0.9f)
+    fun `absurd values are clamped by sanitized`() {
+        // Mirrors what a malformed remote payload would produce after optDouble parsing.
+        val wild = HdrPreset.GAME_VIVID.copy(
+            exposure = 99f,
+            saturation = -5f,
+            bloom = 40f,
+            sharpen = 12f,
+            captureScale = 3f,
+            targetFps = 500
+        ).sanitized()
+        assertEquals(1.6f, wild.exposure, 1e-5f)
+        assertEquals(0.6f, wild.saturation, 1e-5f)
+        assertEquals(0.9f, wild.bloom, 1e-5f)
+        assertEquals(0.9f, wild.sharpen, 1e-5f)
+        assertEquals(1.0f, wild.captureScale, 1e-5f)
+        assertEquals(60, wild.targetFps)
+    }
+
+    @Test
+    fun `null remote config leaves the preset untouched`() {
+        val base = HdrPreset.EXTREME_HDR
+        assertEquals(base, HdrPreset.withRemote(base, null))
     }
 
     @Test
