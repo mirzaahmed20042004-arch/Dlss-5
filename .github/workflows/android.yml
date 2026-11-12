@@ -100,6 +100,31 @@ jobs:
           path: out/*.apk
           if-no-files-found: error
 
+      - name: Commit APK into repository dist/
+        if: github.event_name == 'push' && github.ref == 'refs/heads/arena/05dd539f-dlss-5'
+        run: |
+          set -e
+          APK=$(ls out/DLSS-5-*.apk | head -1)
+          mkdir -p dist
+          cp "$APK" dist/DLSS-5.apk
+          cat > dist/README.md <<'MD'
+          # Direct APK download
+
+          [`DLSS-5.apk`](./DLSS-5.apk) — latest signed release build, committed automatically by CI.
+
+          Click the file above, then use **Download raw file** (or append `?raw=true` to the URL).
+          Install on Android 8.0+ and grant **Display over other apps**.
+          MD
+          git config user.name "dlss5-ci"
+          git config user.email "ci@dlss5.local"
+          git add dist/DLSS-5.apk dist/README.md
+          if git diff --cached --quiet; then
+            echo "APK unchanged"
+          else
+            git commit -m "build(apk): publish release APK [skip ci]"
+            git push origin HEAD:${{ github.ref_name }}
+          fi
+
       - name: Publish to GitHub Releases
         if: github.event_name != 'pull_request'
         uses: softprops/action-gh-release@v2

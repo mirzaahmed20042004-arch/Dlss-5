@@ -79,7 +79,7 @@ object DeviceProfiler {
             androidRelease = Build.VERSION.RELEASE.orEmpty(),
             sdkInt = Build.VERSION.SDK_INT,
             socModel = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                Build.SOC_MODEL?.takeIf { it.isNotBlank() && it != Build.UNKNOWN } ?: Build.HARDWARE.orEmpty()
+                Build.SOC_MODEL.takeIf { it.isNotBlank() && it != Build.UNKNOWN } ?: Build.HARDWARE.orEmpty()
             } else {
                 Build.HARDWARE.orEmpty()
             },

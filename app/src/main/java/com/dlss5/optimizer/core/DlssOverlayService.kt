@@ -544,7 +544,12 @@ class DlssOverlayService : Service() {
         prefs.engineRunning = false
         SyncWorker.enqueue(this)
         try {
-            stopForeground(true)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                stopForeground(STOP_FOREGROUND_REMOVE)
+            } else {
+                @Suppress("DEPRECATION")
+                stopForeground(true)
+            }
         } catch (t: Throwable) {
             // ignore
         }

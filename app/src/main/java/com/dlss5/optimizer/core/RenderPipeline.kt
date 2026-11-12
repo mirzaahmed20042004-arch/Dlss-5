@@ -365,7 +365,7 @@ class RenderPipeline {
             // 1. downscale to the DRS target size
             val sw = (w * renderScale.coerceIn(0.5f, 1f)).toInt().coerceAtLeast(2)
             val sh = (h * renderScale.coerceIn(0.5f, 1f)).toInt().coerceAtLeast(2)
-            drawInto(downProgram, srcTex, sw, sh, downTex, 1f, bilinear = true, srcW = w, srcH = h)
+            drawInto(downProgram, srcTex, sw, sh, downTex, 1f, srcW = w, srcH = h)
             // 2. temporal blend against previous (stabilises micro-jitter)
             if (haveHistory) {
                 blendHistory(sw, sh)
@@ -373,7 +373,7 @@ class RenderPipeline {
                 haveHistory = true
             }
             // 3. upscale back to full size with the quality kernel
-            drawInto(upProgram, blendTex, w, h, outTex, 1f, bilinear = false, srcW = sw, srcH = sh)
+            drawInto(upProgram, blendTex, w, h, outTex, 1f, srcW = sw, srcH = sh)
             // 4. unsharp mask on the full-size result, into downTex's slot as scratch → read back
             val sharpened = sharpenPass(w, h)
             framesProcessed++
@@ -408,7 +408,6 @@ class RenderPipeline {
         h: Int,
         targetTex: Int,
         strength: Float,
-        bilinear: Boolean,
         srcW: Int,
         srcH: Int
     ) {

@@ -14,6 +14,7 @@ import android.view.WindowManager
 object DeviceGuards {
 
     /** True when the OS will refuse to attach overlay windows from a background process. */
+    @Suppress("UNUSED_PARAMETER")
     fun isOverlayBlockedByStrictMode(context: Context): Boolean = false // reserved; OEM hooks land here
 
     fun canDrawOverlaySafely(context: Context): Boolean = Permissions.canDrawOverlays(context)
@@ -36,7 +37,7 @@ object DeviceGuards {
     fun refreshRateHz(context: Context): Float = try {
         val wm = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
         val rate = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            context.display?.refreshRate ?: wm.defaultDisplay.refreshRate
+            context.display?.refreshRate ?: 60f
         } else {
             @Suppress("DEPRECATION")
             wm.defaultDisplay.refreshRate

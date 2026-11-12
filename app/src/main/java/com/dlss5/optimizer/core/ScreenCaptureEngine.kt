@@ -93,7 +93,6 @@ class ScreenCaptureEngine(
             reader = r
             r.setOnImageAvailableListener({ readerRef -> onImageAvailable(readerRef) }, h)
 
-            val displayManager = context.getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
             virtualDisplay = projection?.createVirtualDisplay(
                 "dlss5-capture",
                 captureWidth,
