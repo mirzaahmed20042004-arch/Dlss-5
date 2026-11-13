@@ -387,14 +387,50 @@
                     android:text="BLEND 100%" />
             </LinearLayout>
 
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:id="@+id/btnSharpness"
+                    style="@style/ChipNeon"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="SHARP 38%" />
+
+                <TextView
+                    android:id="@+id/btnRefreshLock"
+                    style="@style/ChipNeon"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:layout_weight="1"
+                    android:text="LOCK FPS ON" />
+            </LinearLayout>
+
             <TextView
                 android:id="@+id/hdrHint"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="10dp"
-                android:text="Runs a real GPU colour grade (tone-mapping + bloom + vibrance + sharpen) on captured frames and shows them over the game. Needs screen-capture consent."
+                android:text="Real GPU colour grade (tone-mapping + bloom + vibrance + sharpen) on captured frames, shown over the game through a touch-transparent layer. Auto-falls back to GPU-lite then CPU if a driver refuses a shader."
                 android:textColor="@color/text_muted"
                 android:textSize="9.5sp" />
+
+            <TextView
+                android:id="@+id/engineDiag"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:background="@drawable/bg_chip_small"
+                android:padding="8dp"
+                android:text="ENGINE: idle · shaders: probing"
+                android:textColor="@color/neon_green"
+                android:textSize="9sp"
+                android:letterSpacing="0.04" />
         </LinearLayout>
 
         <!-- Toggles -->

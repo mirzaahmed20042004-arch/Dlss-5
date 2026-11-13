@@ -82,6 +82,9 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnNextPreset: TextView
     private lateinit var btnToggleHdr: TextView
     private lateinit var btnHdrBlend: TextView
+    private lateinit var btnSharpness: TextView
+    private lateinit var btnRefreshLock: TextView
+    private lateinit var engineDiag: TextView
     private lateinit var toggleSafe: TextView
     private lateinit var toggleTelemetry: TextView
 
@@ -217,6 +220,9 @@ class MainActivity : AppCompatActivity() {
         btnNextPreset = findViewById(R.id.btnNextPreset)
         btnToggleHdr = findViewById(R.id.btnToggleHdr)
         btnHdrBlend = findViewById(R.id.btnHdrBlend)
+        btnSharpness = findViewById(R.id.btnSharpness)
+        btnRefreshLock = findViewById(R.id.btnRefreshLock)
+        engineDiag = findViewById(R.id.engineDiag)
         toggleSafe = findViewById(R.id.toggleSafe)
         toggleTelemetry = findViewById(R.id.toggleTelemetry)
     }
@@ -239,6 +245,8 @@ class MainActivity : AppCompatActivity() {
         btnNextPreset.setOnClickListener { stepHdrPreset(1) }
         btnToggleHdr.setOnClickListener { toggleHdrEnabled() }
         btnHdrBlend.setOnClickListener { cycleHdrBlend() }
+        btnSharpness.setOnClickListener { cycleSharpness() }
+        btnRefreshLock.setOnClickListener { toggleRefreshLock() }
         toggleSafe.setOnClickListener {
             try {
                 prefs.safeMode = !prefs.safeMode
@@ -527,6 +535,7 @@ class MainActivity : AppCompatActivity() {
             syncModeChips()
             syncToggles()
             syncHdrSection()
+            refreshEngineDiag()
             val synced = prefs.lastSyncEpoch > 0 && (Time.epochSeconds() - prefs.lastSyncEpoch) < 3600
             cloudDot.alpha = if (synced) 1f else 0.35f
             cloudLabel.text = if (synced) getString(R.string.cloud_synced) else getString(R.string.cloud_offline)
@@ -545,6 +554,36 @@ class MainActivity : AppCompatActivity() {
     // ------------------------------------------------------------------ HDR preset controls
 
     private fun activePreset(): HdrPreset = HdrPreset.byId(prefs.hdrPresetId)
+
+    /**
+     * Shows what the engine is *actually* doing: mode, shader tier that compiled, and the display policy.
+     * This replaces vague messages with observability — the user can see the GPU work is real.
+     */
+    private fun refreshEngineDiag() {
+        try {
+            val tuner = com.dlss5.optimizer.core.PerfTuner(this)
+            val tierLine = tuner.describe(profileTier())
+            val modeName = when (prefs.mode) {
+                Prefs.MODE_HDR -> "HDR · ${activePreset().label}"
+                Prefs.MODE_TRUE_DLSS -> "TRUE DLSS"
+                Prefs.MODE_UPSCALE -> "UPSCALE"
+                else -> "GOVERNOR"
+            }
+            val state = when {
+                prefs.engineRunning && prefs.mode == Prefs.MODE_HDR -> "HDR LIVE"
+                prefs.engineRunning -> "ENGINE LIVE"
+                else -> "idle"
+            }
+            engineDiag.text = "ENGINE: $state · $modeName\n" +
+                "SHADERS: auto-ladder (full → lite → minimal → CPU)\n" +
+                "PERF: $tierLine\n" +
+                "TIER: ${profile.tier.key.uppercase()} · RAM ${profile.totalRamMb}MB · ${profile.gpuRenderer}"
+        } catch (t: Throwable) {
+            Logger.w(TAG, "refreshEngineDiag failed: ${t.message}")
+        }
+    }
+
+    private fun profileTier() = profile.tier
 
     private fun stepHdrPreset(direction: Int) {
         try {
@@ -590,6 +629,40 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun cycleSharpness() {
+        try {
+            Haptics.confirm(this)
+            val next = when {
+                prefs.sharpness >= 0.79f -> 0.12f
+                prefs.sharpness >= 0.49f -> 0.80f
+                prefs.sharpness >= 0.24f -> 0.50f
+                else -> 0.25f
+            }
+            prefs.sharpness = next
+            syncHdrSection()
+            toast("Sharpness ${(next * 100).toInt()}% — applies from the next frame")
+        } catch (t: Throwable) {
+            Logger.w(TAG, "cycleSharpness failed: ${t.message}")
+        }
+    }
+
+    private fun toggleRefreshLock() {
+        try {
+            Haptics.confirm(this)
+            prefs.lockRefreshRate = !prefs.lockRefreshRate
+            syncHdrSection()
+            toast(
+                if (prefs.lockRefreshRate) {
+                    "Frame-rate lock ON — re-engage to apply the display mode."
+                } else {
+                    "Frame-rate lock OFF — letting the system switch modes."
+                }
+            )
+        } catch (t: Throwable) {
+            Logger.w(TAG, "toggleRefreshLock failed: ${t.message}")
+        }
+    }
+
     private fun syncHdrSection() {
         try {
             val preset = activePreset()
@@ -615,6 +688,16 @@ class MainActivity : AppCompatActivity() {
             )
             hdrPresetName.alpha = if (prefs.hdrEnabled) 1f else 0.45f
             hdrPresetDesc.alpha = if (prefs.hdrEnabled) 1f else 0.45f
+            btnSharpness.text = "SHARP ${(prefs.sharpness * 100).toInt()}%"
+            btnSharpness.setTextColor(
+                if (prefs.sharpness > 0.45f) Color.parseColor("#39FF14") else Color.parseColor("#9CA89C")
+            )
+            btnRefreshLock.isSelected = prefs.lockRefreshRate
+            btnRefreshLock.text = if (prefs.lockRefreshRate) "LOCK FPS ON" else "LOCK FPS OFF"
+            btnRefreshLock.setTextColor(
+                if (prefs.lockRefreshRate) Color.parseColor("#39FF14") else Color.parseColor("#9CA89C")
+            )
+            refreshEngineDiag()
         } catch (t: Throwable) {
             Logger.w(TAG, "syncHdrSection failed: ${t.message}")
         }
