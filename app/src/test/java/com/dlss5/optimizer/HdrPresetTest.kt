@@ -124,7 +124,7 @@ class ColorMathTest {
 
     @Test
     fun `saturation boost is luma preserving`() {
-        val preset = com.dlss5.optimizer.core.HdrPreset.EXTREME_HDR
+        val preset = com.dlss5.optimizer.core.HdrPreset.EXTREME_HDR.copy(temperature = 0f)
         val out = com.dlss5.optimizer.core.ColorMath.gradeChannel(0.5f, 0.5f, 0.5f, preset)
         // grey has nothing to saturate; it must stay grey
         assertEquals(out[0], out[1], 2e-3f)

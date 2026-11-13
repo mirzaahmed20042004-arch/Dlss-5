@@ -47,32 +47,36 @@ object ColorMath {
         lr *= (1f + preset.temperature)
         lb *= (1f - preset.temperature)
 
-        // contrast around the linear midpoint
-        lr = (lr - 0.5f) * preset.contrast + 0.5f
-        lg = (lg - 0.5f) * preset.contrast + 0.5f
-        lb = (lb - 0.5f) * preset.contrast + 0.5f
-
-        // Reinhard-style highlight shoulder above the knee
+        // Reinhard-style highlight shoulder above the knee (still linear light)
         val knee = 0.62f
         val k = max(preset.highlightRolloff, 0.001f) * 2f
         if (lr > knee) lr = knee + (lr - knee) / (1f + (lr - knee) * k)
         if (lg > knee) lg = knee + (lg - knee) / (1f + (lg - knee) * k)
         if (lb > knee) lb = knee + (lb - knee) / (1f + (lb - knee) * k)
 
-        // shadow lift
-        val lum = luma(lr, lg, lb)
-        val lift = preset.shadowLift * (1f - smoothstep(0f, 0.42f, lum))
-        lr += lift
-        lg += lift
-        lb += lift
+        // ---- tone map to display space, THEN grade (contrast in linear light destroys shadows)
+        var dr = toDisplay(lr)
+        var dg = toDisplay(lg)
+        var db = toDisplay(lb)
 
-        // luma-preserving saturation
-        val gray = luma(lr, lg, lb)
-        lr = gray + (lr - gray) * preset.saturation
-        lg = gray + (lg - gray) * preset.saturation
-        lb = gray + (lb - gray) * preset.saturation
+        dr = (dr - 0.5f) * preset.contrast + 0.5f
+        dg = (dg - 0.5f) * preset.contrast + 0.5f
+        db = (db - 0.5f) * preset.contrast + 0.5f
 
-        return floatArrayOf(toDisplay(lr), toDisplay(lg), toDisplay(lb))
+        val lum = luma(dr, dg, db)
+        val lift = preset.shadowLift * (1f - smoothstep(0f, 0.45f, lum))
+        dr += lift
+        dg += lift
+        db += lift
+
+        val gray = luma(dr, dg, db)
+        dr = gray + (dr - gray) * preset.saturation
+        dg = gray + (dg - gray) * preset.saturation
+        db = gray + (db - gray) * preset.saturation
+
+        return floatArrayOf(
+            dr.coerceIn(0f, 1f), dg.coerceIn(0f, 1f), db.coerceIn(0f, 1f)
+        )
     }
 
     /**

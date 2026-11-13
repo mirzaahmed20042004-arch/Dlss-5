@@ -200,26 +200,33 @@ object ShaderLibrary {
                 vec3 original = texture2D(uTex, vUv).rgb;
                 vec3 c = pow(max(original, vec3(0.0)), vec3(2.2));
 
+                // ---- HDR stage (linear light): exposure, white balance, highlight shoulder
                 c *= uExposure;
                 c.r *= (1.0 + uTemperature);
                 c.b *= (1.0 - uTemperature);
-                c = (c - 0.5) * uContrast + 0.5;
 
                 float knee = 0.62;
                 vec3 over = max(c - knee, vec3(0.0));
                 c = min(c, vec3(knee)) + over / (1.0 + over * max(uRolloff, 0.001) * 2.0);
 
-                float lum = luma(c);
-                float shadowMask = 1.0 - smoothstep(0.0, 0.42, lum);
-                c += uShadowLift * shadowMask;
-
-                float gray = luma(c);
-                c = mix(vec3(gray), c, uSaturation);
-
-                vec3 bloom = texture2D(uBloom, vUv).rgb;
-                c += bloom * uBloomStrength * 0.6;
-
+                // ---- tone map to display space BEFORE contrast/saturation.
+                // Doing contrast in linear light crushes shadows to black (linear 0.5 == sRGB 0.73),
+                // so the creative grade happens where the eye actually judges it.
                 vec3 graded = pow(clamp(c, 0.0, 1.0), vec3(1.0 / 2.2));
+
+                graded = (graded - 0.5) * uContrast + 0.5;
+
+                float lum = luma(graded);
+                graded += uShadowLift * (1.0 - smoothstep(0.0, 0.45, lum));
+
+                float gray = luma(graded);
+                graded = mix(vec3(gray), graded, uSaturation);
+
+                if (uBloomStrength > 0.001) {
+                    vec3 bloom = texture2D(uBloom, vUv).rgb;
+                    graded += bloom * uBloomStrength * 0.6;
+                }
+                graded = clamp(graded, 0.0, 1.0);
 
                 vec3 l = texture2D(uTex, vUv - vec2(uTexel.x, 0.0)).rgb;
                 vec3 r = texture2D(uTex, vUv + vec2(uTexel.x, 0.0)).rgb;
@@ -262,19 +269,20 @@ object ShaderLibrary {
                 c *= uExposure;
                 c.r *= (1.0 + uTemperature);
                 c.b *= (1.0 - uTemperature);
-                c = (c - 0.5) * uContrast + 0.5;
 
                 float knee = 0.62;
                 vec3 over = max(c - knee, vec3(0.0));
                 c = min(c, vec3(knee)) + over / (1.0 + over * max(uRolloff, 0.001) * 2.0);
 
-                float lum = luma(c);
-                c += uShadowLift * (1.0 - smoothstep(0.0, 0.42, lum));
-
-                float gray = luma(c);
-                c = mix(vec3(gray), c, uSaturation);
-
                 vec3 graded = pow(clamp(c, 0.0, 1.0), vec3(1.0 / 2.2));
+                graded = (graded - 0.5) * uContrast + 0.5;
+
+                float lum = luma(graded);
+                graded += uShadowLift * (1.0 - smoothstep(0.0, 0.45, lum));
+
+                float gray = luma(graded);
+                graded = mix(vec3(gray), graded, uSaturation);
+                graded = clamp(graded, 0.0, 1.0);
                 vec3 l = texture2D(uTex, vUv - vec2(uTexel.x, 0.0)).rgb;
                 vec3 r = texture2D(uTex, vUv + vec2(uTexel.x, 0.0)).rgb;
                 vec3 u = texture2D(uTex, vUv - vec2(0.0, uTexel.y)).rgb;
@@ -307,8 +315,8 @@ object ShaderLibrary {
                 vec3 c = original * uExposure;
                 c = (c - 0.5) * uContrast + 0.5;
                 float gray = dot(c, vec3(0.299, 0.587, 0.114));
-                c = mix(vec3(gray), c, uSaturation);
-                vec3 target = mix(original, clamp(c, 0.0, 1.0), uBlend);
+                c = clamp(mix(vec3(gray), c, uSaturation), 0.0, 1.0);
+                vec3 target = mix(original, c, uBlend);
                 float a = clamp(uAlpha, 0.05, 0.95);
                 vec3 src = (target - original * (1.0 - a)) / a;
                 gl_FragColor = vec4(clamp(src, 0.0, 1.0), a);
