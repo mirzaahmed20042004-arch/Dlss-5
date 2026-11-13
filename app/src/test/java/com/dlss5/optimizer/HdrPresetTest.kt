@@ -3,6 +3,8 @@ package com.dlss5.optimizer
 import com.dlss5.optimizer.core.HdrPreset
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -129,5 +131,81 @@ class ColorMathTest {
         // grey has nothing to saturate; it must stay grey
         assertEquals(out[0], out[1], 2e-3f)
         assertEquals(out[1], out[2], 2e-3f)
+    }
+}
+
+class ColorLookTest {
+
+    @Test
+    fun `every look has a visible effect except pure`() {
+        com.dlss5.optimizer.core.ColorLook.ALL.forEach { look ->
+            if (look.id == "pure") {
+                assertTrue(look.isEmpty())
+            } else {
+                assertTrue("${look.id} paints nothing", !look.isEmpty())
+            }
+        }
+    }
+
+    @Test
+    fun `night looks are dark and cool`() {
+        val nights = com.dlss5.optimizer.core.ColorLook.nights()
+        assertTrue(nights.size >= 3)
+        nights.forEach {
+            assertTrue("${it.id} too bright", it.brightness <= 0.95f)
+            assertTrue("${it.id} not cool", it.warmth <= 0f)
+            assertTrue("${it.id} top layer too weak", it.topAlpha >= 0.25f)
+        }
+    }
+
+    @Test
+    fun `night mode turns the sky blue and dims`() {
+        val night = com.dlss5.optimizer.core.ColorLook.NIGHT_MODE
+        assertTrue(night.night)
+        assertTrue("brightness ${night.brightness}", night.brightness < 0.8f)
+        // blue channel dominates the top colour
+        val top = night.topColor
+        val r = (top shr 16) and 0xFF
+        val b = top and 0xFF
+        assertTrue("top colour not blue-dominant (r=$r b=$b)", b > r)
+    }
+
+    @Test
+    fun `strength scaling fades toward no layers`() {
+        val look = com.dlss5.optimizer.core.ColorLook.VIVID_HDR
+        val half = com.dlss5.optimizer.core.ColorLook.scaled(look, 0.5f)
+        val off = com.dlss5.optimizer.core.ColorLook.scaled(look, 0f)
+        assertTrue(half.scrimAlpha < look.scrimAlpha)
+        assertEquals(1f, off.brightness, 1e-4f)
+        assertTrue(off.isEmpty())
+    }
+
+    @Test
+    fun `looks cycle in both directions`() {
+        val all = com.dlss5.optimizer.core.ColorLook.ALL
+        var id = all.first().id
+        repeat(all.size) { id = com.dlss5.optimizer.core.ColorLook.next(id).id }
+        assertEquals(all.first().id, id)
+        repeat(all.size) { id = com.dlss5.optimizer.core.ColorLook.previous(id).id }
+        assertEquals(all.first().id, id)
+    }
+
+    @Test
+    fun `auto night picks a night look at night hours`() {
+        assertNotNull(com.dlss5.optimizer.core.ColorLook.autoNightFor(22))
+        assertNotNull(com.dlss5.optimizer.core.ColorLook.autoNightFor(2))
+        assertNull(com.dlss5.optimizer.core.ColorLook.autoNightFor(14))
+    }
+
+    @Test
+    fun `sanitized clamps hostile values`() {
+        val wild = com.dlss5.optimizer.core.ColorLook.NIGHT_MODE.copy(
+            scrimAlpha = 5f, topAlpha = -2f, vignette = 9f, brightness = 0.01f, warmth = 99f
+        ).sanitized()
+        assertEquals(0.85f, wild.scrimAlpha, 1e-4f)
+        assertEquals(0f, wild.topAlpha, 1e-4f)
+        assertEquals(0.85f, wild.vignette, 1e-4f)
+        assertEquals(0.30f, wild.brightness, 1e-4f)
+        assertEquals(1f, wild.warmth, 1e-4f)
     }
 }

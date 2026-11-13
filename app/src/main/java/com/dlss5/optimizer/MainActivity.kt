@@ -20,6 +20,7 @@ import androidx.core.content.ContextCompat
 import com.dlss5.optimizer.core.DeviceProfile
 import com.dlss5.optimizer.core.DeviceProfiler
 import androidx.lifecycle.lifecycleScope
+import com.dlss5.optimizer.core.ColorLook
 import com.dlss5.optimizer.core.HdrPreset
 import kotlinx.coroutines.launch
 import com.dlss5.optimizer.core.DlssOverlayService
@@ -89,6 +90,15 @@ class MainActivity : AppCompatActivity() {
     private lateinit var engineDiag: TextView
     private lateinit var btnSnapshots: TextView
     private lateinit var btnCloudTune: TextView
+    private lateinit var lookState: TextView
+    private lateinit var lookName: TextView
+    private lateinit var lookDesc: TextView
+    private lateinit var btnLookPrev: TextView
+    private lateinit var btnLookNext: TextView
+    private lateinit var btnNight: TextView
+    private lateinit var btnLookStrength: TextView
+    private lateinit var btnAutoNight: TextView
+    private lateinit var btnAutoTune: TextView
     private lateinit var toggleSafe: TextView
     private lateinit var toggleTelemetry: TextView
 
@@ -229,6 +239,15 @@ class MainActivity : AppCompatActivity() {
         engineDiag = findViewById(R.id.engineDiag)
         btnSnapshots = findViewById(R.id.btnSnapshots)
         btnCloudTune = findViewById(R.id.btnCloudTune)
+        lookState = findViewById(R.id.lookState)
+        lookName = findViewById(R.id.lookName)
+        lookDesc = findViewById(R.id.lookDesc)
+        btnLookPrev = findViewById(R.id.btnLookPrev)
+        btnLookNext = findViewById(R.id.btnLookNext)
+        btnNight = findViewById(R.id.btnNight)
+        btnLookStrength = findViewById(R.id.btnLookStrength)
+        btnAutoNight = findViewById(R.id.btnAutoNight)
+        btnAutoTune = findViewById(R.id.btnAutoTune)
         toggleSafe = findViewById(R.id.toggleSafe)
         toggleTelemetry = findViewById(R.id.toggleTelemetry)
     }
@@ -254,6 +273,12 @@ class MainActivity : AppCompatActivity() {
         btnSharpness.setOnClickListener { cycleSharpness() }
         btnRefreshLock.setOnClickListener { toggleRefreshLock() }
         btnCloudTune.setOnClickListener { fetchCloudTuning() }
+        btnLookPrev.setOnClickListener { stepLook(forward = false) }
+        btnLookNext.setOnClickListener { stepLook(forward = true) }
+        btnNight.setOnClickListener { toggleNight() }
+        btnLookStrength.setOnClickListener { cycleLookStrength() }
+        btnAutoNight.setOnClickListener { toggleAutoNight() }
+        btnAutoTune.setOnClickListener { runAutoTune() }
         btnSnapshots.setOnClickListener {
             try {
                 Haptics.confirm(this)
@@ -314,6 +339,7 @@ class MainActivity : AppCompatActivity() {
             syncModeChips()
             syncToggles()
             syncHdrSection()
+            syncLookSection()
         } catch (t: Throwable) {
             Logger.w(TAG, "applyInitialState failed: ${t.message}")
         }
@@ -558,6 +584,7 @@ class MainActivity : AppCompatActivity() {
             syncModeChips()
             syncToggles()
             syncHdrSection()
+            syncLookSection()
             refreshEngineDiag()
             val synced = prefs.lastSyncEpoch > 0 && (Time.epochSeconds() - prefs.lastSyncEpoch) < 3600
             cloudDot.alpha = if (synced) 1f else 0.35f
@@ -575,6 +602,185 @@ class MainActivity : AppCompatActivity() {
     // ------------------------------------------------------------------ capture
 
     // ------------------------------------------------------------------ HDR preset controls
+
+    // ------------------------------------------------------------------ colour looks
+
+    private fun activeLook(): ColorLook {
+        if (prefs.autoNight) {
+            val hour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
+            ColorLook.autoNightFor(hour)?.let { return it }
+        }
+        return ColorLook.byId(prefs.lookId)
+    }
+
+    private fun stepLook(forward: Boolean) {
+        try {
+            Haptics.confirm(this)
+            val current = activeLook()
+            val next = if (forward) ColorLook.next(current.id) else ColorLook.previous(current.id)
+            prefs.lookId = next.id
+            prefs.autoNight = false
+            prefs.colorLayerEnabled = true
+            syncLookSection()
+            toast("${next.label} — ${next.description}")
+            if (prefs.engineRunning) restartOverlayToApply()
+        } catch (t: Throwable) {
+            Logger.w(TAG, "stepLook failed: ${t.message}")
+        }
+    }
+
+    private fun toggleNight() {
+        try {
+            Haptics.confirm(this)
+            val isNight = com.dlss5.optimizer.core.ColorLook.nights().any { it.id == activeLook().id }
+            if (isNight) {
+                prefs.lookId = "dlss_extreme"
+                prefs.autoNight = false
+                toast("Night mode OFF — back to DLSS EXTREME")
+            } else {
+                prefs.lookId = "night_mode"
+                prefs.autoNight = false
+                toast("🌙 NIGHT MODE — the sky turns night-blue and the screen dims")
+            }
+            syncLookSection()
+            if (prefs.engineRunning) restartOverlayToApply()
+        } catch (t: Throwable) {
+            Logger.w(TAG, "toggleNight failed: ${t.message}")
+        }
+    }
+
+    private fun cycleLookStrength() {
+        try {
+            Haptics.confirm(this)
+            val next = when {
+                prefs.lookStrength >= 0.99f -> 0.70f
+                prefs.lookStrength >= 0.65f -> 0.45f
+                prefs.lookStrength >= 0.40f -> 1.00f
+                else -> 0.70f
+            }
+            prefs.lookStrength = next
+            syncLookSection()
+            toast("Colour strength ${(next * 100).toInt()}%")
+            if (prefs.engineRunning) restartOverlayToApply()
+        } catch (t: Throwable) {
+            Logger.w(TAG, "cycleLookStrength failed: ${t.message}")
+        }
+    }
+
+    private fun toggleAutoNight() {
+        try {
+            Haptics.confirm(this)
+            prefs.autoNight = !prefs.autoNight
+            syncLookSection()
+            toast(
+                if (prefs.autoNight) "AUTO NIGHT on — night look after 8 pm, moonlight after midnight"
+                else "AUTO NIGHT off — keeping your selected look"
+            )
+            if (prefs.engineRunning) restartOverlayToApply()
+        } catch (t: Throwable) {
+            Logger.w(TAG, "toggleAutoNight failed: ${t.message}")
+        }
+    }
+
+    /**
+     * Local auto-tuner ("AI TUNE").
+     *
+     * Uses the device profile plus the measured FPS of past sessions to choose the combination that is
+     * most likely to look good *and* stay fluid: grade preset, colour look, strength, capture scale and
+     * frame cap. No network needed; it reasons over your own recorded sessions.
+     */
+    private fun runAutoTune() {
+        try {
+            Haptics.confirm(this)
+            val sessions = store.sessions(10)
+            val measuredFps = sessions.map { it.avgFps }.filter { it > 1.0 }
+            val avgFps = if (measuredFps.isEmpty()) 0.0 else measuredFps.average()
+            val struggling = measuredFps.isNotEmpty() && avgFps < (profile.defaultTargetFps * 0.85)
+            val strong = profile.tier == com.dlss5.optimizer.core.SocTier.FLAGSHIP ||
+                profile.tier == com.dlss5.optimizer.core.SocTier.HIGH
+
+            // 1) grade preset
+            val preset = when {
+                struggling -> HdrPreset.GAME_VIVID
+                strong -> HdrPreset.EXTREME_HDR
+                else -> HdrPreset.GAME_VIVID
+            }
+            prefs.hdrPresetId = preset.id
+
+            // 2) colour look: competition-friendly at night hours, punchy otherwise
+            val hour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
+            val look = when {
+                struggling -> if (hour >= 19 || hour <= 6) ColorLook.NIGHT_MODE else ColorLook.VISIBILITY
+                hour >= 20 || hour <= 5 -> ColorLook.NIGHT_MODE
+                else -> if (strong) ColorLook.VIVID_HDR else ColorLook.DLSS_EXTREME
+            }
+            prefs.lookId = look.id
+            prefs.autoNight = false
+
+            // 3) strength & sharpness scaled by headroom
+            prefs.lookStrength = if (struggling) 0.70f else 1.0f
+            prefs.sharpness = if (struggling) 0.28f else 0.44f
+
+            // 4) frame cap: never ask for more than the panel can hold
+            prefs.targetFps = when {
+                struggling -> 45
+                profile.maxRefreshHz >= 100f -> 90
+                else -> 60
+            }
+
+            syncLookSection()
+            syncHdrSection()
+            toast(
+                "AI TUNE: ${preset.label} + ${look.label} · ${prefs.targetFps} fps cap" +
+                    if (measuredFps.isEmpty()) " (no history yet — profile-based)" else
+                        " (avg ${"%.0f".format(avgFps)} fps measured)"
+            )
+            if (prefs.engineRunning) restartOverlayToApply()
+        } catch (t: Throwable) {
+            Logger.w(TAG, "runAutoTune failed: ${t.message}")
+        }
+    }
+
+    /** Applies look changes to a running overlay without a full re-engage. */
+    private fun restartOverlayToApply() {
+        try {
+            launchService(mode = prefs.mode)
+        } catch (t: Throwable) {
+            Logger.w(TAG, "restartOverlayToApply failed: ${t.message}")
+        }
+    }
+
+    private fun syncLookSection() {
+        try {
+            val look = activeLook()
+            lookName.text = look.label
+            lookDesc.text = look.description
+            lookName.alpha = if (prefs.lookStrength > 0.05f) 1f else 0.4f
+            btnLookStrength.text = "STRENGTH ${(prefs.lookStrength * 100).toInt()}%"
+            btnAutoNight.isSelected = prefs.autoNight
+            btnAutoNight.setTextColor(
+                if (prefs.autoNight) Color.parseColor("#39FF14") else Color.parseColor("#9CA89C")
+            )
+            btnNight.isSelected = look.night
+            btnNight.setTextColor(
+                if (look.night) Color.parseColor("#00FFC6") else Color.parseColor("#9CA89C")
+            )
+            lookState.text = when {
+                !prefs.colorLayerEnabled -> "OFF"
+                prefs.engineRunning -> "LIVE"
+                else -> "READY"
+            }
+            lookState.setTextColor(
+                when {
+                    !prefs.colorLayerEnabled -> Color.parseColor("#FF2D55")
+                    prefs.engineRunning -> Color.parseColor("#39FF14")
+                    else -> Color.parseColor("#9CA89C")
+                }
+            )
+        } catch (t: Throwable) {
+            Logger.w(TAG, "syncLookSection failed: ${t.message}")
+        }
+    }
 
     private fun activePreset(): HdrPreset = HdrPreset.byId(prefs.hdrPresetId)
 
@@ -644,7 +850,15 @@ class MainActivity : AppCompatActivity() {
                 prefs.engineRunning -> "ENGINE LIVE"
                 else -> "idle"
             }
+            val lookLine = try {
+                val look = activeLook()
+                "${look.label} @ ${(prefs.lookStrength * 100).toInt()}%" +
+                    if (prefs.autoNight) " (auto-night)" else ""
+            } catch (t: Throwable) {
+                "n/a"
+            }
             engineDiag.text = "ENGINE: $state · $modeName\n" +
+                "COLOUR LAYER: $lookLine · brightness ${"%.2f".format(activeLook().brightness)}\n" +
                 "SHADERS: auto-ladder (full → lite → minimal → CPU)\n" +
                 "PERF: $tierLine\n" +
                 "TIER: ${profile.tier.key.uppercase()} · RAM ${profile.totalRamMb}MB · ${profile.gpuRenderer}"

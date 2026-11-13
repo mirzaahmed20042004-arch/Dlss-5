@@ -167,6 +167,7 @@ class DlssOverlayService : Service() {
                 }
             }
 
+            applyColorLook()
             startEngine()
             acquireWakeLock()
             applyDisplayPolicy()
@@ -425,6 +426,10 @@ class DlssOverlayService : Service() {
                 }
                 OverlayController.MenuAction.NEXT_HDR_PRESET -> cycleHdrPreset()
                 OverlayController.MenuAction.SNAPSHOT -> requestSnapshot()
+                OverlayController.MenuAction.NEXT_LOOK -> cycleLook(forward = true)
+                OverlayController.MenuAction.PREV_LOOK -> cycleLook(forward = false)
+                OverlayController.MenuAction.TOGGLE_NIGHT -> toggleNightMode()
+                OverlayController.MenuAction.LOOK_STRENGTH -> cycleLookStrength()
             }
         } catch (t: Throwable) {
             Logger.e(TAG, "menu action failed", t)
@@ -472,6 +477,89 @@ class DlssOverlayService : Service() {
             SyncWorker.enqueue(this)
         } catch (t: Throwable) {
             Logger.e(TAG, "handleCaptureFailure failed", t)
+        }
+    }
+
+    // ------------------------------------------------------------------ colour looks
+
+    /**
+     * Resolves which look should be painted: explicit choice, or the auto-night look when enabled and the
+     * clock says it is evening. This is what makes the colour visible immediately after ENGAGE — before,
+     * during and after any capture/permission dance.
+     */
+    private fun currentLook(): com.dlss5.optimizer.core.ColorLook {
+        val base = com.dlss5.optimizer.core.ColorLook.byId(prefs.lookId)
+        if (prefs.autoNight) {
+            val hour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
+            com.dlss5.optimizer.core.ColorLook.autoNightFor(hour)?.let { return it }
+        }
+        return base
+    }
+
+    private fun applyColorLook() {
+        try {
+            if (!prefs.colorLayerEnabled) {
+                overlay?.setColorLayerVisible(false)
+                return
+            }
+            val look = currentLook()
+            overlay?.applyColorLook(look, prefs.lookStrength)
+            Logger.i(TAG, "colour look ${look.id} strength=${prefs.lookStrength}")
+        } catch (t: Throwable) {
+            Logger.e(TAG, "applyColorLook failed", t)
+        }
+    }
+
+    private fun cycleLook(forward: Boolean) {
+        try {
+            val current = currentLook()
+            val next = if (forward) {
+                com.dlss5.optimizer.core.ColorLook.next(current.id)
+            } else {
+                com.dlss5.optimizer.core.ColorLook.previous(current.id)
+            }
+            prefs.lookId = next.id
+            prefs.autoNight = false
+            applyColorLook()
+            toastOnce("Colour: ${next.label} — ${next.description}")
+            Haptics.confirm(this)
+        } catch (t: Throwable) {
+            Logger.e(TAG, "cycleLook failed", t)
+        }
+    }
+
+    private fun toggleNightMode() {
+        try {
+            val nightIds = com.dlss5.optimizer.core.ColorLook.nights().map { it.id }
+            val currentlyNight = nightIds.contains(prefs.lookId) && !prefs.autoNight
+            if (currentlyNight) {
+                prefs.lookId = "dlss_extreme"
+                prefs.autoNight = false
+                toastOnce("Night mode OFF")
+            } else {
+                prefs.lookId = "night_mode"
+                toastOnce("NIGHT MODE ON — sky goes night-blue, screen dims")
+            }
+            applyColorLook()
+            Haptics.confirm(this)
+        } catch (t: Throwable) {
+            Logger.e(TAG, "toggleNightMode failed", t)
+        }
+    }
+
+    private fun cycleLookStrength() {
+        try {
+            val next = when {
+                prefs.lookStrength >= 0.99f -> 0.70f
+                prefs.lookStrength >= 0.65f -> 0.45f
+                prefs.lookStrength >= 0.40f -> 1.00f
+                else -> 0.70f
+            }
+            prefs.lookStrength = next
+            applyColorLook()
+            toastOnce("Colour strength ${(next * 100).toInt()}%")
+        } catch (t: Throwable) {
+            Logger.e(TAG, "cycleLookStrength failed", t)
         }
     }
 
@@ -527,6 +615,7 @@ class DlssOverlayService : Service() {
             overlay?.setHdrPresetLabel(next.label)
             overlay?.setStatus(next.label, Color.parseColor("#39FF14"))
             toastOnce("HDR preset: ${next.label} — ${next.description}")
+            applyColorLook()
             Haptics.confirm(this)
         } catch (t: Throwable) {
             Logger.e(TAG, "cycleHdrPreset failed", t)

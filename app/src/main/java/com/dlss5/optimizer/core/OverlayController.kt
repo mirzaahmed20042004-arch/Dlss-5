@@ -13,6 +13,7 @@ import android.view.WindowManager
 import android.widget.LinearLayout
 import android.widget.TextView
 import com.dlss5.optimizer.ui.FloatingPuckView
+import com.dlss5.optimizer.ui.ColorLayerView
 import com.dlss5.optimizer.ui.HdrSurfaceView
 import com.dlss5.optimizer.ui.StatsHudView
 import com.dlss5.optimizer.util.Haptics
@@ -38,13 +39,15 @@ class OverlayController(
     private val onMenuAction: (MenuAction) -> Unit
 ) {
 
-    enum class MenuAction { STOP, TOGGLE_HUD, NEXT_MODE, TOGGLE_CAPTURE, TOGGLE_HDR, NEXT_HDR_PRESET, SNAPSHOT }
+    enum class MenuAction { STOP, TOGGLE_HUD, NEXT_MODE, TOGGLE_CAPTURE, TOGGLE_HDR, NEXT_HDR_PRESET, SNAPSHOT, NEXT_LOOK, PREV_LOOK, TOGGLE_NIGHT, LOOK_STRENGTH }
 
     private val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
     private val mainHandler = Handler(Looper.getMainLooper())
 
     private var hudView: StatsHudView? = null
     private var hdrView: HdrSurfaceView? = null
+    private var colorView: ColorLayerView? = null
+    private var colorParams: WindowManager.LayoutParams? = null
     private var hdrParams: WindowManager.LayoutParams? = null
     private var puckView: FloatingPuckView? = null
     private var menuView: LinearLayout? = null
@@ -55,6 +58,7 @@ class OverlayController(
 
     fun hud(): StatsHudView? = hudView
     fun hdr(): HdrSurfaceView? = hdrView
+    fun colorLayer(): ColorLayerView? = colorView
     fun puck(): FloatingPuckView? = puckView
     fun isAttached(): Boolean = attached
 
@@ -65,6 +69,7 @@ class OverlayController(
             return false
         }
         return try {
+            attachColorLayer()
             attachHdrLayer()
             attachHud()
             attachPuck()
@@ -76,6 +81,86 @@ class OverlayController(
             detach()
             false
         }
+    }
+
+    /**
+     * The **always-visible** colour layer. Added first (bottom of our stack, directly above the game) and
+     * it only needs the overlay permission — so the screen changes colour on every device, regardless of
+     * whether MediaProjection or the GPU shader path is available.
+     */
+    private fun attachColorLayer() {
+        val view = ColorLayerView(context)
+        val params = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.MATCH_PARENT,
+            overlayType(),
+            WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
+                WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED or
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_OVERSCAN,
+            PixelFormat.TRANSLUCENT
+        ).apply {
+            gravity = Gravity.TOP or Gravity.START
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                layoutInDisplayCutoutMode =
+                    WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+            }
+            // Dimming the panel is honoured by the system without WRITE_SETTINGS and is what sells
+            // NIGHT MODE even on a bright room/outdoor display.
+            screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
+        }
+        windowManager.addView(view, params)
+        colorView = view
+        colorParams = params
+    }
+
+    /** Paints [look] at [strength]; also applies the look's brightness to the panel. */
+    fun applyColorLook(look: ColorLook, strength: Float = 1f, brightness: Float = -1f) {
+        try {
+            val view = colorView ?: return
+            view.applyLook(look, strength)
+            view.setShowing(true)
+            val effective = ColorLook.scaled(look, strength)
+            val target = if (brightness > 0f) brightness else effective.brightness
+            val params = colorParams
+            if (params != null) {
+                params.screenBrightness = if (target >= 0.999f) {
+                    WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
+                } else {
+                    target.coerceIn(0.3f, 1f)
+                }
+                windowManager.updateViewLayout(view, params)
+            }
+        } catch (t: Throwable) {
+            Logger.w(TAG, "applyColorLook failed: ${t.message}")
+        }
+    }
+
+    fun setColorLayerStrength(strength: Float) {
+        try {
+            colorView?.setStrength(strength)
+        } catch (t: Throwable) {
+            Logger.w(TAG, "colour strength failed: ${t.message}")
+        }
+    }
+
+    fun setColorLayerVisible(visible: Boolean) {
+        try {
+            colorView?.setShowing(visible)
+        } catch (t: Throwable) {
+            Logger.w(TAG, "colour visibility failed: ${t.message}")
+        }
+    }
+
+    /** Exposed for the diagnostics panel: what is actually painted right now. */
+    fun colorState(): String = try {
+        val view = colorView ?: return "none"
+        val effective = view.currentLook()
+        if (!view.isShowing()) "hidden" else "${effective.label} (${(effective.scrimAlpha * 100).toInt()}% scrim)"
+    } catch (t: Throwable) {
+        "none"
     }
 
     /**
@@ -233,6 +318,10 @@ class OverlayController(
             menu.addView(menuRow("CAPTURE DLSS", MenuAction.TOGGLE_CAPTURE, Color.parseColor("#FFC400")))
             menu.addView(menuRow("HDR LAYER", MenuAction.TOGGLE_HDR, Color.parseColor("#39FF14")))
             menu.addView(menuRow("HDR PRESET", MenuAction.NEXT_HDR_PRESET, Color.parseColor("#00FFC6")))
+            menu.addView(menuRow("COLOUR LOOK ▸", MenuAction.NEXT_LOOK, Color.parseColor("#39FF14")))
+            menu.addView(menuRow("◂ COLOUR LOOK", MenuAction.PREV_LOOK, Color.parseColor("#39FF14")))
+            menu.addView(menuRow("NIGHT MODE", MenuAction.TOGGLE_NIGHT, Color.parseColor("#00FFC6")))
+            menu.addView(menuRow("LOOK STRENGTH", MenuAction.LOOK_STRENGTH, Color.parseColor("#FFC400")))
             menu.addView(menuRow("SNAPSHOT", MenuAction.SNAPSHOT, Color.parseColor("#FFFFFF")))
 
             val params = WindowManager.LayoutParams(
@@ -287,7 +376,7 @@ class OverlayController(
             } else {
                 max(dp(4), puck.x - menuWidth - dp(4))
             }
-            params.y = puck.y.coerceIn(dp(4), max(dp(4), metrics.heightPixels - dp(320)))
+            params.y = puck.y.coerceIn(dp(4), max(dp(4), metrics.heightPixels - dp(430)))
             windowManager.updateViewLayout(menu, params)
         } catch (t: Throwable) {
             Logger.w(TAG, "menu reposition failed: ${t.message}")
@@ -364,6 +453,20 @@ class OverlayController(
     /** Must be called on rotation so the HUD matches the new viewport. */
     fun onConfigurationChanged() {
         try {
+            colorView?.let { view ->
+                colorParams?.let { params ->
+                    val metrics = context.resources.displayMetrics
+                    params.width = metrics.widthPixels
+                    params.height = metrics.heightPixels
+                    windowManager.updateViewLayout(view, params)
+                    // force gradient rebuild for the new size
+                    view.applyLook(view.currentLook(), 1f)
+                }
+            }
+        } catch (t: Throwable) {
+            Logger.w(TAG, "colour config change failed: ${t.message}")
+        }
+        try {
             hdrView?.let { view ->
                 hdrParams?.let { params ->
                     val metrics = context.resources.displayMetrics
@@ -396,6 +499,11 @@ class OverlayController(
         attached = false
         closeMenu()
         try {
+            colorView?.let { windowManager.removeView(it) }
+        } catch (t: Throwable) {
+            Logger.w(TAG, "colour detach failed: ${t.message}")
+        }
+        try {
             hdrView?.clearFrame()
             hdrView?.let { windowManager.removeView(it) }
         } catch (t: Throwable) {
@@ -412,6 +520,8 @@ class OverlayController(
             Logger.w(TAG, "puck detach failed: ${t.message}")
         } finally {
             hudView = null
+            colorView = null
+            colorParams = null
             hdrView = null
             hdrParams = null
             puckView = null
