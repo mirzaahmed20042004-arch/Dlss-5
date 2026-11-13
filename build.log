@@ -1,0 +1,176 @@
+
+Welcome to Gradle 8.7!
+
+Here are the highlights of this release:
+ - Compiling and testing with Java 22
+ - Cacheable Groovy script compilation
+ - New methods in lazy collection properties
+
+For more details see https://docs.gradle.org/8.7/release-notes.html
+
+To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/8.7/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+Daemon will be stopped at the end of the build 
+> Task :app:checkKotlinGradlePluginConfigurationErrors
+> Task :app:preBuild UP-TO-DATE
+> Task :app:preDebugBuild UP-TO-DATE
+> Task :app:generateDebugBuildConfig FROM-CACHE
+> Task :app:generateDebugResValues FROM-CACHE
+> Task :app:checkDebugAarMetadata
+> Task :app:mapDebugSourceSetPaths
+> Task :app:generateDebugResources FROM-CACHE
+> Task :app:mergeDebugResources FROM-CACHE
+> Task :app:packageDebugResources FROM-CACHE
+> Task :app:parseDebugLocalResources FROM-CACHE
+> Task :app:createDebugCompatibleScreenManifests
+> Task :app:extractDeepLinksDebug FROM-CACHE
+> Task :app:processDebugMainManifest FROM-CACHE
+> Task :app:processDebugManifest FROM-CACHE
+> Task :app:processDebugManifestForPackage FROM-CACHE
+> Task :app:processDebugResources FROM-CACHE
+> Task :app:compileDebugKotlin FROM-CACHE
+> Task :app:javaPreCompileDebug FROM-CACHE
+> Task :app:compileDebugJavaWithJavac FROM-CACHE
+> Task :app:preDebugUnitTestBuild UP-TO-DATE
+> Task :app:javaPreCompileDebugUnitTest FROM-CACHE
+> Task :app:processDebugJavaRes
+> Task :app:bundleDebugClassesToCompileJar
+> Task :app:bundleDebugClassesToRuntimeJar
+> Task :app:compileDebugUnitTestKotlin FROM-CACHE
+> Task :app:compileDebugUnitTestJavaWithJavac NO-SOURCE
+> Task :app:processDebugUnitTestJavaRes
+> Task :app:testDebugUnitTest FROM-CACHE
+
+BUILD SUCCESSFUL in 13s
+25 actionable tasks: 8 executed, 17 from cache
+To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/8.7/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+Daemon will be stopped at the end of the build 
+> Task :app:preBuild UP-TO-DATE
+> Task :app:preReleaseBuild UP-TO-DATE
+> Task :app:mergeReleaseJniLibFolders
+> Task :app:mergeReleaseNativeLibs NO-SOURCE
+> Task :app:stripReleaseDebugSymbols NO-SOURCE
+> Task :app:extractReleaseNativeSymbolTables NO-SOURCE
+> Task :app:mergeReleaseNativeDebugMetadata NO-SOURCE
+> Task :app:buildKotlinToolingMetadata
+> Task :app:checkKotlinGradlePluginConfigurationErrors
+> Task :app:checkReleaseDuplicateClasses
+> Task :app:generateReleaseBuildConfig FROM-CACHE
+> Task :app:generateReleaseResValues FROM-CACHE
+> Task :app:checkReleaseAarMetadata
+> Task :app:mapReleaseSourceSetPaths
+> Task :app:generateReleaseResources FROM-CACHE
+> Task :app:mergeReleaseResources FROM-CACHE
+> Task :app:packageReleaseResources FROM-CACHE
+> Task :app:parseReleaseLocalResources FROM-CACHE
+> Task :app:createReleaseCompatibleScreenManifests
+> Task :app:extractDeepLinksRelease FROM-CACHE
+> Task :app:processReleaseMainManifest FROM-CACHE
+> Task :app:processReleaseManifest FROM-CACHE
+> Task :app:processReleaseManifestForPackage FROM-CACHE
+> Task :app:processReleaseResources FROM-CACHE
+> Task :app:compileReleaseKotlin FROM-CACHE
+> Task :app:javaPreCompileRelease FROM-CACHE
+> Task :app:compileReleaseJavaWithJavac FROM-CACHE
+> Task :app:mergeReleaseArtProfile
+> Task :app:extractProguardFiles
+> Task :app:expandReleaseArtProfileWildcards FROM-CACHE
+> Task :app:mergeReleaseGeneratedProguardFiles
+> Task :app:processReleaseJavaRes
+> Task :app:mergeReleaseStartupProfile
+> Task :app:mergeReleaseShaders
+> Task :app:compileReleaseShaders NO-SOURCE
+> Task :app:generateReleaseAssets UP-TO-DATE
+> Task :app:mergeReleaseAssets
+> Task :app:compressReleaseAssets FROM-CACHE
+> Task :app:extractReleaseVersionControlInfo
+> Task :app:processApplicationManifestReleaseForBundle
+> Task :app:bundleReleaseResources FROM-CACHE
+> Task :app:collectReleaseDependencies
+> Task :app:mergeReleaseJavaResource
+> Task :app:sdkReleaseDependencyData
+> Task :app:minifyReleaseWithR8 FROM-CACHE
+> Task :app:compileReleaseArtProfile FROM-CACHE
+> Task :app:shrinkReleaseRes FROM-CACHE
+> Task :app:optimizeReleaseResources FROM-CACHE
+> Task :app:validateSigningRelease
+> Task :app:writeReleaseAppMetadata
+> Task :app:writeReleaseSigningConfigVersions
+> Task :app:packageRelease
+> Task :app:createReleaseApkListingFileRedirect
+> Task :app:assembleRelease
+
+BUILD SUCCESSFUL in 12s
+45 actionable tasks: 24 executed, 21 from cache
+=== APK: out/DLSS-5-42.apk ===
+-rw-r--r-- 1 runner runner 952435 Nov 13 02:23 out/DLSS-5-42.apk
+=== badging ===
+package: name='com.dlss5.optimizer' versionCode='4' versionName='1.3.0' platformBuildVersionName='14' platformBuildVersionCode='34' compileSdkVersion='34' compileSdkVersionCodename='14'
+sdkVersion:'26'
+targetSdkVersion:'34'
+uses-permission: name='android.permission.SYSTEM_ALERT_WINDOW'
+uses-permission: name='android.permission.FOREGROUND_SERVICE'
+uses-permission: name='android.permission.FOREGROUND_SERVICE_SPECIAL_USE'
+uses-permission: name='android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION'
+uses-permission: name='android.permission.WAKE_LOCK'
+=== permissions ===
+package: com.dlss5.optimizer
+uses-permission: name='android.permission.SYSTEM_ALERT_WINDOW'
+uses-permission: name='android.permission.FOREGROUND_SERVICE'
+uses-permission: name='android.permission.FOREGROUND_SERVICE_SPECIAL_USE'
+uses-permission: name='android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION'
+uses-permission: name='android.permission.WAKE_LOCK'
+uses-permission: name='android.permission.POST_NOTIFICATIONS'
+uses-permission: name='android.permission.WRITE_EXTERNAL_STORAGE' maxSdkVersion='28'
+uses-permission: name='android.permission.RECEIVE_BOOT_COMPLETED'
+uses-permission: name='android.permission.INTERNET'
+uses-permission: name='android.permission.ACCESS_NETWORK_STATE'
+uses-permission: name='android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS'
+permission: com.dlss5.optimizer.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION
+uses-permission: name='com.dlss5.optimizer.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION'
+=== components ===
+          E: activity (line=59)
+            A: http://schemas.android.com/apk/res/android:theme(0x01010000)=@0x7f0e0110
+            A: http://schemas.android.com/apk/res/android:name(0x01010003)="com.dlss5.optimizer.MainActivity" (Raw: "com.dlss5.optimizer.MainActivity")
+--
+          E: service (line=74)
+            A: http://schemas.android.com/apk/res/android:name(0x01010003)="com.dlss5.optimizer.core.DlssOverlayService" (Raw: "com.dlss5.optimizer.core.DlssOverlayService")
+            A: http://schemas.android.com/apk/res/android:enabled(0x0101000e)=true
+--
+          E: receiver (line=86)
+            A: http://schemas.android.com/apk/res/android:name(0x01010003)="com.dlss5.optimizer.core.BootRestoreReceiver" (Raw: "com.dlss5.optimizer.core.BootRestoreReceiver")
+            A: http://schemas.android.com/apk/res/android:enabled(0x0101000e)=true
+--
+          E: service (line=114)
+            A: http://schemas.android.com/apk/res/android:name(0x01010003)="androidx.work.impl.background.systemalarm.SystemAlarmService" (Raw: "androidx.work.impl.background.systemalarm.SystemAlarmService")
+            A: http://schemas.android.com/apk/res/android:enabled(0x0101000e)=@0x7f040002
+--
+          E: service (line=119)
+            A: http://schemas.android.com/apk/res/android:name(0x01010003)="androidx.work.impl.background.systemjob.SystemJobService" (Raw: "androidx.work.impl.background.systemjob.SystemJobService")
+            A: http://schemas.android.com/apk/res/android:permission(0x01010006)="android.permission.BIND_JOB_SERVICE" (Raw: "android.permission.BIND_JOB_SERVICE")
+--
+          E: service (line=125)
+            A: http://schemas.android.com/apk/res/android:name(0x01010003)="androidx.work.impl.foreground.SystemForegroundService" (Raw: "androidx.work.impl.foreground.SystemForegroundService")
+            A: http://schemas.android.com/apk/res/android:enabled(0x0101000e)=@0x7f040003
+--
+          E: receiver (line=131)
+            A: http://schemas.android.com/apk/res/android:name(0x01010003)="androidx.work.impl.utils.ForceStopRunnable$BroadcastReceiver" (Raw: "androidx.work.impl.utils.ForceStopRunnable$BroadcastReceiver")
+            A: http://schemas.android.com/apk/res/android:enabled(0x0101000e)=true
+--
+          E: receiver (line=136)
+            A: http://schemas.android.com/apk/res/android:name(0x01010003)="androidx.work.impl.background.systemalarm.ConstraintProxy$BatteryChargingProxy" (Raw: "androidx.work.impl.background.systemalarm.ConstraintProxy$BatteryChargingProxy")
+=== signature ===
+Verifies
+Verified using v1 scheme (JAR signing): false
+Verified using v2 scheme (APK Signature Scheme v2): true
+Verified using v3 scheme (APK Signature Scheme v3): false
+Verified using v3.1 scheme (APK Signature Scheme v3.1): false
+Verified using v4 scheme (APK Signature Scheme v4): false
+Verified for SourceStamp: false
+Number of signers: 1
+Signer #1 certificate DN: CN=DLSS-5, OU=Mobile, O=DLSS-5, L=Karachi, ST=Sindh, C=PK
+Signer #1 certificate SHA-256 digest: 497e54006fec929eb9a052ee29f13d4e60c220b02f3a2c20e58ae5b375a1bda8
+Signer #1 certificate SHA-1 digest: 5ca6b0817357dfd29ebd8413e8ae905ca536df11
+Signer #1 certificate MD5 digest: 827519f5be4de4fdfe6d4f7631107370
+Signer #1 key algorithm: RSA
+Signer #1 key size (bits): 2048
+=== END VERIFY ===
