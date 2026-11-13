@@ -6,6 +6,11 @@ on:
     tags: [ 'v*' ]
   pull_request:
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Release tag to publish the APK to (e.g. v1.1.0)'
+        required: false
+        default: ''
 
 permissions:
   contents: write
@@ -160,8 +165,8 @@ jobs:
         if: github.event_name != 'pull_request'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || 'build-latest' }}
-          name: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || 'DLSS-5 latest build' }}
+          tag_name: ${{ github.event.inputs.release_tag != '' && github.event.inputs.release_tag || (startsWith(github.ref, 'refs/tags/v') && github.ref_name || 'build-latest') }}
+          name: ${{ github.event.inputs.release_tag != '' && format('DLSS-5 {0}', github.event.inputs.release_tag) || (startsWith(github.ref, 'refs/tags/v') && github.ref_name || 'DLSS-5 latest build') }}
           body: |
             **DLSS-5** automatic build from `${{ github.ref_name }}` @ `${{ github.sha }}`.
 
