@@ -57,7 +57,7 @@ object SnapshotSaver {
         return uri.toString()
     }
 
-    @Suppress("DEPRECATION")
+    @Suppress("DEPRECATION", "UNUSED_PARAMETER")
     private fun saveLegacy(context: Context, bitmap: Bitmap, name: String): String? {
         val dir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES), ALBUM)
         if (!dir.exists() && !dir.mkdirs()) return null
