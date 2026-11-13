@@ -153,10 +153,20 @@ class MainActivity : AppCompatActivity() {
                     }
                 )
             } else {
+                // Capture refused/denied. Do NOT abort the whole experience: engage the overlay so the
+                // colour look still paints the game, then continue in GOVERNOR frame-pacing mode.
+                val keepHdr = prefs.mode == Prefs.MODE_HDR
                 prefs.mode = Prefs.MODE_GOVERNOR
                 syncModeChips()
-                toast("Capture denied — GOVERNOR mode keeps working.")
                 launchService(mode = Prefs.MODE_GOVERNOR)
+                moveTaskToBack(true)
+                toast(
+                    if (keepHdr) {
+                        "Capture unavailable — colour look + GOVERNOR are live. Enable screen capture for per-pixel HDR."
+                    } else {
+                        "Capture denied — GOVERNOR mode keeps working."
+                    }
+                )
             }
         } catch (t: Throwable) {
             Logger.e(TAG, "capture result failed", t)

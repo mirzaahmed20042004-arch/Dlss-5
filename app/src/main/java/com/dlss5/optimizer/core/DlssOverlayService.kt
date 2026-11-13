@@ -152,6 +152,10 @@ class DlssOverlayService : Service() {
                 prefs.mode = mode
             }
 
+            // Colour looks are applied on every start, before any capture handshake: this is the part the
+            // user can always see.
+            applyColorLook()
+
             if (overlay?.isAttached() != true) {
                 if (!Permissions.canDrawOverlays(this)) {
                     Logger.w(TAG, "overlay permission revoked, stopping")
@@ -449,6 +453,9 @@ class DlssOverlayService : Service() {
             capture?.shutdown("failure: $reason")
             capture = null
             overlay?.setHdrVisible(false)
+            // The colour layer is independent of capture: keep painting it so the screen keeps its look
+            // even when the projection/shader path is unavailable on this device.
+            applyColorLook()
             when (reason) {
                 "hdr_unavailable" -> {
                     // Do not leave the user staring at a black layer: switch to the DLSS upscale mode,
