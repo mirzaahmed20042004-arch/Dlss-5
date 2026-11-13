@@ -63,8 +63,10 @@ class ScreenCaptureEngine(
     private var handler: Handler? = null
     private val pipeline = RenderPipeline()
     private val compositor = HdrCompositor()
+    private val softwareGrader = SoftwareGrader()
     private var hdrReady = false
     private var hdrUnavailableReported = false
+    private var pipelineRetries = 0
 
     private var captureWidth = 0
     private var captureHeight = 0
@@ -78,10 +80,25 @@ class ScreenCaptureEngine(
 
     fun isRunning(): Boolean = projection != null && !stopped
     fun framesEmitted(): Long = framesEmitted
-    fun hdrActive(): Boolean = hdrEnabled && hdrReady && compositor.isHealthy()
+    fun hdrActive(): Boolean = hdrEnabled && (hdrReady && compositor.isHealthy() || softwareActive())
+    fun softwareActive(): Boolean = softwareGrader.isEnabled()
+    fun hdrTier(): String = when {
+        hdrReady && compositor.isHealthy() -> compositor.tier()
+        softwareGrader.isEnabled() -> "software_cpu"
+        else -> "none"
+    }
+    fun upscaleTier(): String = pipeline.upscaleTier()
+    fun compositorBloom(): Boolean = if (hdrReady) compositor.hasBloom() else false
     fun compositorCostMs(): Long = compositor.lastFrameCostMs()
-    fun setHdrPreset(preset: HdrPreset) = compositor.setPreset(preset)
-    fun setHdrBlend(blend: Float) = compositor.setBlend(blend)
+    fun setHdrPreset(preset: HdrPreset) {
+        compositor.setPreset(preset)
+        softwareGrader.setPreset(preset)
+    }
+
+    fun setHdrBlend(blend: Float) {
+        compositor.setBlend(blend)
+        softwareGrader.setBlend(blend)
+    }
     fun setHdrEnabled(enabled: Boolean) = compositor.setEnabled(enabled)
 
     /** Starts capture. Returns false (and calls [onFailure]) instead of throwing. */
@@ -136,11 +153,17 @@ class ScreenCaptureEngine(
 
             // HDR mode owns the frame; the upscale pipeline is only needed for the DLSS modes.
             if (hdrEnabled) {
-                hdrReady = compositor.init(
-                    captureWidth, captureHeight, hdrPreset, hdrBlend
-                )
+                hdrReady = compositor.init(captureWidth, captureHeight, hdrPreset, hdrBlend)
                 if (!hdrReady) {
-                    Logger.w(TAG, "HDR compositor unavailable, continuing with raw frames")
+                    // Every GLSL tier was rejected. Do not give up: grade on the CPU so the user still
+                    // gets the colour work, just at a lower cadence.
+                    Logger.w(TAG, "GPU HDR unavailable, enabling CPU software grader")
+                    softwareGrader.configure(
+                        preset = hdrPreset,
+                        blend = hdrBlend,
+                        alpha = 0.34f,
+                        step = if (profile.tier == SocTier.ENTRY) 2 else 1
+                    )
                 }
             }
             if (upscaleOutput && !hdrEnabled) {
@@ -179,6 +202,22 @@ class ScreenCaptureEngine(
             val bitmap = imageToBitmap(image) ?: return
             val started = System.nanoTime()
 
+            // HDR mode — software path (CPU grade) when the GPU rejected every shader tier.
+            if (hdrEnabled && softwareGrader.isEnabled()) {
+                neutraliseCorrection(bitmap, 0.34f)
+                val graded = softwareGrader.process(bitmap)
+                if (graded != null) {
+                    lastCorrection = graded
+                    framesEmitted++
+                    onFrame(graded, softwareGrader.lastCostMs())
+                    return
+                }
+                Logger.w(TAG, "software grader failed, disabling")
+                softwareGrader.release()
+                onFailure("hdr_unavailable")
+                return
+            }
+
             // HDR mode: build the correction layer and flatten our previous layer out of the capture so
             // the feedback loop converges on the requested grade instead of compounding.
             if (hdrEnabled && hdrReady && compositor.isHealthy()) {
@@ -200,12 +239,12 @@ class ScreenCaptureEngine(
                 return
             }
             if (hdrEnabled && !hdrReady) {
-                // HDR requested but the shader could not start. Never push raw frames to the HDR layer:
-                // an opaque copy of the game would be captured again and compound. Report once and let
-                // the service fall back to GOVERNOR mode.
+                // HDR requested but no shader tier could start. Never push raw frames to the HDR layer:
+                // an opaque copy of the game would be captured again and compound. Report the *tier*
+                // ladder outcome so the UI can explain what actually happened.
                 if (!hdrUnavailableReported) {
                     hdrUnavailableReported = true
-                    onFailure("hdr shader unavailable")
+                    onFailure("hdr_unavailable")
                 }
                 return
             }
@@ -213,8 +252,19 @@ class ScreenCaptureEngine(
             val processed = pipeline.process(bitmap, 1.0f)
             val costMs = (System.nanoTime() - started) / 1_000_000L
             if (processed == null) {
+                // One retry: the pipeline may have lost its EGL context while the app was backgrounded.
+                if (pipelineRetries < 2) {
+                    pipelineRetries++
+                    Logger.w(TAG, "upscale frame failed, rebuilding pipeline (retry $pipelineRetries)")
+                    pipeline.release()
+                    pipeline.init(
+                        captureWidth, captureHeight,
+                        preferLanczos && FilterKernels.canAffordLanczos(profile.tier, captureWidth)
+                    )
+                    return
+                }
                 shutdown("pipeline failure")
-                onFailure("upscale pipeline failed")
+                onFailure("upscale_unavailable")
                 return
             }
             framesEmitted++
@@ -343,6 +393,11 @@ class ScreenCaptureEngine(
             compositor.release()
         } catch (t: Throwable) {
             Logger.w(TAG, "compositor release: ${t.message}")
+        }
+        try {
+            softwareGrader.release()
+        } catch (t: Throwable) {
+            Logger.w(TAG, "software grader release: ${t.message}")
         }
         try {
             handler?.removeCallbacksAndMessages(null)

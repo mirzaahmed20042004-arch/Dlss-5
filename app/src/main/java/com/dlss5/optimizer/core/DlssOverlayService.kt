@@ -429,6 +429,50 @@ class DlssOverlayService : Service() {
         }
     }
 
+    /**
+     * Turns a capture failure into something true and actionable.
+     *
+     *  * `hdr_unavailable`   → every HDR tier was rejected; we keep the upscale path instead of dumping
+     *                          raw frames onto the screen (which would recurse through the capture).
+     *  * `upscale_unavailable` → DLSS path could not render on this driver; governor keeps running.
+     *  * anything else        → projection itself ended (revoked, screen off, another capture started).
+     */
+    private fun handleCaptureFailure(reason: String) {
+        try {
+            capture?.shutdown("failure: $reason")
+            capture = null
+            overlay?.setHdrVisible(false)
+            when (reason) {
+                "hdr_unavailable" -> {
+                    // Do not leave the user staring at a black layer: switch to the DLSS upscale mode,
+                    // which uses the same capture session with a different (simpler) shader chain.
+                    overlay?.setStatus("UPSCALE MODE", Color.parseColor("#FFC400"))
+                    val hadCapture = capture != null
+                    if (!hadCapture) {
+                        toastOnce("HDR shaders unavailable on this GPU — restarting in UPSCALE mode.")
+                    }
+                    prefs.mode = Prefs.MODE_UPSCALE
+                    engine?.setMode(Prefs.MODE_UPSCALE)
+                }
+                "upscale_unavailable" -> {
+                    overlay?.setStatus("GOVERNOR MODE", Color.parseColor("#FFC400"))
+                    toastOnce("GPU upscaling is not supported here — GOVERNOR frame pacing is still active.")
+                    prefs.mode = Prefs.MODE_GOVERNOR
+                    engine?.setMode(Prefs.MODE_GOVERNOR)
+                }
+                else -> {
+                    overlay?.setStatus("GOVERNOR MODE", Color.parseColor("#FFC400"))
+                    toastOnce("Screen capture ended — GOVERNOR frame pacing continues.")
+                    prefs.mode = Prefs.MODE_GOVERNOR
+                    engine?.setMode(Prefs.MODE_GOVERNOR)
+                }
+            }
+            SyncWorker.enqueue(this)
+        } catch (t: Throwable) {
+            Logger.e(TAG, "handleCaptureFailure failed", t)
+        }
+    }
+
     /** Cycles EXTREME HDR → CINEMATIC → VISIBILITY → VIVID → NATIVE and applies it live. */
     private fun cycleHdrPreset() {
         try {
@@ -513,10 +557,7 @@ class DlssOverlayService : Service() {
                     mainHandler.post {
                         try {
                             overlay?.setHdrVisible(false)
-                            overlay?.setStatus("GOVERNOR MODE", Color.parseColor("#FFC400"))
-                            toastOnce("Capture stopped ($reason). Running in GOVERNOR mode.")
-                            prefs.mode = Prefs.MODE_GOVERNOR
-                            engine?.setMode(Prefs.MODE_GOVERNOR)
+                            handleCaptureFailure(reason)
                         } catch (t: Throwable) {
                             Logger.w(TAG, "capture failure handling: ${t.message}")
                         }
@@ -547,17 +588,36 @@ class DlssOverlayService : Service() {
             engine?.setHdrActive(hdr)
             Logger.i(TAG, "capture engine started mode=${SessionRecord.modeName(mode)} hdr=$hdr preset=${preset.id}")
 
-            // If the projection was accepted but the compositor could not start, tell the user once and
-            // drop back to the governor so nothing silently looks "broken".
+            // Report which shader tier actually loaded (visible proof the GPU work is running), and if a
+            // tier had to be downgraded say so precisely instead of blaming the device.
             mainHandler.postDelayed({
                 try {
-                    val active = capture
-                    if (hdr && active != null && !active.hdrActive()) {
-                        toastOnce("This GPU blocked the HDR shader. Running DLSS upscale instead.")
-                        overlay?.setStatus("UPSCALE", Color.parseColor("#FFC400"))
+                    val active = capture ?: return@postDelayed
+                    if (hdr) {
+                        if (active.hdrActive()) {
+                            val tier = active.hdrTier()
+                            val bloom = if (active.compositorBloom()) "bloom" else "no-bloom"
+                            overlay?.setStatus(preset.label, Color.parseColor("#39FF14"))
+                            Logger.i(TAG, "HDR live tier=$tier $bloom frames=${active.framesEmitted()}")
+                            when (tier) {
+                                "software_cpu" -> toastOnce(
+                                    "HDR running on the CPU (compatibility mode) — colour grade active, lower cadence."
+                                )
+                                "hdr_full" -> Unit
+                                else -> toastOnce(
+                                    "HDR compatibility tier active ($tier) — full colour grade still applies."
+                                )
+                            }
+                        }
+                    } else {
+                        val tier = active.upscaleTier()
+                        Logger.i(TAG, "upscale live tier=$tier frames=${active.framesEmitted()}")
+                        if (tier == "linear_sharpen") {
+                            toastOnce("Upscaling in compatibility mode — sharpen active.")
+                        }
                     }
                 } catch (t: Throwable) {
-                    Logger.w(TAG, "hdr health check failed: ${t.message}")
+                    Logger.w(TAG, "health check failed: ${t.message}")
                 }
             }, 2500L)
         } catch (t: Throwable) {
