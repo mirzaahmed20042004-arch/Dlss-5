@@ -155,12 +155,14 @@ class OverlayController(
     }
 
     /** Exposed for the diagnostics panel: what is actually painted right now. */
-    fun colorState(): String = try {
-        val view = colorView ?: return "none"
-        val effective = view.currentLook()
-        if (!view.isShowing()) "hidden" else "${effective.label} (${(effective.scrimAlpha * 100).toInt()}% scrim)"
-    } catch (t: Throwable) {
-        "none"
+    fun colorState(): String {
+        return try {
+            val view = colorView ?: return "none"
+            val effective = view.currentLook()
+            if (!view.isShowing()) "hidden" else "${effective.label} (${(effective.scrimAlpha * 100).toInt()}% scrim)"
+        } catch (t: Throwable) {
+            "none"
+        }
     }
 
     /**
