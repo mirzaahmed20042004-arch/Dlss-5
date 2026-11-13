@@ -13,10 +13,10 @@ import kotlin.math.roundToInt
  */
 object ColorMath {
 
-    private const val GAMMA = 2.2
+    private const val GAMMA = 2.2f
 
     /** sRGB-ish → linear. */
-    fun toLinear(c: Float): Float = max(c, 0f).pow(GAMMA.toFloat())
+    fun toLinear(c: Float): Float = max(c, 0f).pow(GAMMA)
 
     /** Linear → sRGB-ish. */
     fun toDisplay(c: Float): Float = min(max(c, 0f), 1f).pow(1f / GAMMA)
