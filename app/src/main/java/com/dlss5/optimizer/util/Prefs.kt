@@ -36,6 +36,7 @@ class Prefs private constructor(context: Context) {
         const val KEY_SHARPNESS = "sharpness"
         const val KEY_LOCK_REFRESH = "lock_refresh"
         const val KEY_FEEDBACK_NEUTRALISE = "feedback_neutralise"
+        const val KEY_SNAPSHOTS = "snapshots"
 
         /** Engine modes. Values are persisted, so never renumber — append only. */
         const val MODE_GOVERNOR = 0
@@ -132,6 +133,11 @@ class Prefs private constructor(context: Context) {
     var lockRefreshRate: Boolean
         get() = sp.getBoolean(KEY_LOCK_REFRESH, true)
         set(value) = sp.edit().putBoolean(KEY_LOCK_REFRESH, value).apply()
+
+    /** Save a graded still to the gallery every N seconds so the effect is provable/shareable. */
+    var snapshotsEnabled: Boolean
+        get() = sp.getBoolean(KEY_SNAPSHOTS, false)
+        set(value) = sp.edit().putBoolean(KEY_SNAPSHOTS, value).apply()
 
     /** Subtract our own correction layer from the capture before grading (accuracy vs CPU cost). */
     var feedbackNeutralise: Boolean

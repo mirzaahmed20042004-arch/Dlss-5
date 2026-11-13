@@ -424,6 +424,7 @@ class DlssOverlayService : Service() {
                     toastOnce(if (showing) "HDR layer hidden — raw game visible" else "HDR layer shown")
                 }
                 OverlayController.MenuAction.NEXT_HDR_PRESET -> cycleHdrPreset()
+                OverlayController.MenuAction.SNAPSHOT -> requestSnapshot()
             }
         } catch (t: Throwable) {
             Logger.e(TAG, "menu action failed", t)
@@ -471,6 +472,49 @@ class DlssOverlayService : Service() {
             SyncWorker.enqueue(this)
         } catch (t: Throwable) {
             Logger.e(TAG, "handleCaptureFailure failed", t)
+        }
+    }
+
+    /** Grabs the next graded frame and writes it to the gallery as proof/share material. */
+    private fun requestSnapshot() {
+        try {
+            if (prefs.mode != Prefs.MODE_HDR || capture == null) {
+                toastOnce("Start HDR mode first, then take a snapshot.")
+                return
+            }
+            pendingSnapshot = true
+            toastOnce("Snapshot queued — saved to Pictures/${com.dlss5.optimizer.core.SnapshotSaver.albumName()}")
+            Haptics.confirm(this)
+        } catch (t: Throwable) {
+            Logger.e(TAG, "requestSnapshot failed", t)
+        }
+    }
+
+    @Volatile
+    private var pendingSnapshot = false
+    private var lastAutoSnapshotMs = 0L
+
+    private fun maybeSaveSnapshot(bitmap: android.graphics.Bitmap, costMs: Long) {
+        try {
+            val wantManual = pendingSnapshot
+            val autoDue = prefs.snapshotsEnabled &&
+                (Time.nowMs() - lastAutoSnapshotMs) > 20_000L &&
+                costMs in 0..200
+            if (!wantManual && !autoDue) return
+            pendingSnapshot = false
+            lastAutoSnapshotMs = Time.nowMs()
+            val label = HdrPreset.byId(prefs.hdrPresetId).label
+            mainHandler.post {
+                val saved = com.dlss5.optimizer.core.SnapshotSaver.save(
+                    applicationContext, bitmap.copy(android.graphics.Bitmap.Config.ARGB_8888, false), label
+                )
+                toastOnce(
+                    if (saved != null) "Saved to gallery: Pictures/${com.dlss5.optimizer.core.SnapshotSaver.albumName()}"
+                    else "Could not save snapshot (storage busy)."
+                )
+            }
+        } catch (t: Throwable) {
+            Logger.w(TAG, "snapshot failed: ${t.message}")
         }
     }
 
@@ -543,6 +587,7 @@ class DlssOverlayService : Service() {
                         if (hdr) {
                             overlay?.submitHdrFrame(bitmap, costMs)
                             overlay?.setHdrVisible(true)
+                            maybeSaveSnapshot(bitmap, costMs)
                         } else {
                             // Preview of the upscale chain, deliberately faint so the real game stays
                             // dominant (an opaque copy would be re-captured by MediaProjection).

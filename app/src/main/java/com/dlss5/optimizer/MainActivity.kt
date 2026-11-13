@@ -85,6 +85,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnSharpness: TextView
     private lateinit var btnRefreshLock: TextView
     private lateinit var engineDiag: TextView
+    private lateinit var btnSnapshots: TextView
     private lateinit var toggleSafe: TextView
     private lateinit var toggleTelemetry: TextView
 
@@ -223,6 +224,7 @@ class MainActivity : AppCompatActivity() {
         btnSharpness = findViewById(R.id.btnSharpness)
         btnRefreshLock = findViewById(R.id.btnRefreshLock)
         engineDiag = findViewById(R.id.engineDiag)
+        btnSnapshots = findViewById(R.id.btnSnapshots)
         toggleSafe = findViewById(R.id.toggleSafe)
         toggleTelemetry = findViewById(R.id.toggleTelemetry)
     }
@@ -247,6 +249,22 @@ class MainActivity : AppCompatActivity() {
         btnHdrBlend.setOnClickListener { cycleHdrBlend() }
         btnSharpness.setOnClickListener { cycleSharpness() }
         btnRefreshLock.setOnClickListener { toggleRefreshLock() }
+        btnSnapshots.setOnClickListener {
+            try {
+                Haptics.confirm(this)
+                prefs.snapshotsEnabled = !prefs.snapshotsEnabled
+                syncHdrSection()
+                toast(
+                    if (prefs.snapshotsEnabled) {
+                        "Auto-snapshots ON — graded frames save to Pictures/DLSS-5"
+                    } else {
+                        "Auto-snapshots OFF"
+                    }
+                )
+            } catch (t: Throwable) {
+                Logger.w(TAG, "snapshot toggle failed: ${t.message}")
+            }
+        }
         toggleSafe.setOnClickListener {
             try {
                 prefs.safeMode = !prefs.safeMode
@@ -694,6 +712,11 @@ class MainActivity : AppCompatActivity() {
             )
             btnRefreshLock.isSelected = prefs.lockRefreshRate
             btnRefreshLock.text = if (prefs.lockRefreshRate) "LOCK FPS ON" else "LOCK FPS OFF"
+            btnSnapshots.isSelected = prefs.snapshotsEnabled
+            btnSnapshots.text = if (prefs.snapshotsEnabled) "SHOTS ON" else "SHOTS OFF"
+            btnSnapshots.setTextColor(
+                if (prefs.snapshotsEnabled) Color.parseColor("#39FF14") else Color.parseColor("#9CA89C")
+            )
             btnRefreshLock.setTextColor(
                 if (prefs.lockRefreshRate) Color.parseColor("#39FF14") else Color.parseColor("#9CA89C")
             )

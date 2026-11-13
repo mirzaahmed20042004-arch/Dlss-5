@@ -38,7 +38,7 @@ class OverlayController(
     private val onMenuAction: (MenuAction) -> Unit
 ) {
 
-    enum class MenuAction { STOP, TOGGLE_HUD, NEXT_MODE, TOGGLE_CAPTURE, TOGGLE_HDR, NEXT_HDR_PRESET }
+    enum class MenuAction { STOP, TOGGLE_HUD, NEXT_MODE, TOGGLE_CAPTURE, TOGGLE_HDR, NEXT_HDR_PRESET, SNAPSHOT }
 
     private val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -233,6 +233,7 @@ class OverlayController(
             menu.addView(menuRow("CAPTURE DLSS", MenuAction.TOGGLE_CAPTURE, Color.parseColor("#FFC400")))
             menu.addView(menuRow("HDR LAYER", MenuAction.TOGGLE_HDR, Color.parseColor("#39FF14")))
             menu.addView(menuRow("HDR PRESET", MenuAction.NEXT_HDR_PRESET, Color.parseColor("#00FFC6")))
+            menu.addView(menuRow("SNAPSHOT", MenuAction.SNAPSHOT, Color.parseColor("#FFFFFF")))
 
             val params = WindowManager.LayoutParams(
                 dp(168),
@@ -286,7 +287,7 @@ class OverlayController(
             } else {
                 max(dp(4), puck.x - menuWidth - dp(4))
             }
-            params.y = puck.y.coerceIn(dp(4), max(dp(4), metrics.heightPixels - dp(240)))
+            params.y = puck.y.coerceIn(dp(4), max(dp(4), metrics.heightPixels - dp(320)))
             windowManager.updateViewLayout(menu, params)
         } catch (t: Throwable) {
             Logger.w(TAG, "menu reposition failed: ${t.message}")
