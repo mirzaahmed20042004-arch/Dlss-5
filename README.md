@@ -12,7 +12,7 @@
 <p align="center">
   <a href="https://github.com/mirzaahmed20042004-arch/Dlss-5/releases/tag/v1.3.0"><b>⬇ Download DLSS-5 v1.3.0 APK</b></a>
   &nbsp;·&nbsp;
-  <a href="https://github.com/mirzaahmed20042004-arch/Dlss-5/releases/download/v1.3.0/DLSS-5-APK.apk"><b>direct .apk</b></a>
+  <a href="https://github.com/mirzaahmed20042004-arch/Dlss-5/releases/download/v1.3.0/DLSS-5-41.apk"><b>direct .apk</b></a>
 </p>
 
 ---
@@ -97,11 +97,12 @@ chain you can see, not a shader-compilation stub, and it is free.
 
 ## Install
 
-1. Grab the APK: **[v1.2.0 direct download](https://github.com/mirzaahmed20042004-arch/Dlss-5/releases/download/v1.2.0/DLSS-5-33.apk)**
+1. Grab the APK: **[v1.3.0 direct download](https://github.com/mirzaahmed20042004-arch/Dlss-5/releases/download/v1.3.0/DLSS-5-41.apk)**
    (or browse [Releases](https://github.com/mirzaahmed20042004-arch/Dlss-5/releases)).
 2. Allow "install unknown apps" for your browser, then install.
 3. Open the app → **Display over other apps** → allow → back.
-4. Pick a mode — **HDR** for live EXTREME HDR graphics, **GOVERNOR** for pure FPS work.
+4. Choose a **COLOUR LOOK** (default DLSS EXTREME, or 🌙 NIGHT). This paints the game immediately —
+   no capture permission needed. Pick **HDR** mode as well for the per-pixel GPU grade.
 5. Tap **ENGAGE DLSS 5** → accept the screen-capture prompt (HDR/DLSS modes) → app minimises → open PUBG Mobile.
 5. Puck controls: **tap** = HUD on/off · **drag** = move · **long-press** = STOP / TOGGLE HUD / NEXT MODE / CAPTURE DLSS.
 
