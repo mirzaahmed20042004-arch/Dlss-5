@@ -51,6 +51,23 @@
 * 2026-11-12 — **UPSCALE vs TRUE DLSS are genuinely different paths** (bicubic@20 fps vs Lanczos-3@12 fps),
   both fed by MediaProjection, so mode selection means something measurable.
 
+## v1.1 — LIVE HDR graphics (2026-11-13)
+
+* 2026-11-13 — **HDR is a correction layer, never a replacement.** MediaProjection captures our overlay,
+  so an opaque graded copy would compound into a feedback tunnel. We emit a translucent per-pixel
+  correction solved from `src·α + game·(1−α) = graded`; loop gain is `1−α`, so frames converge on the
+  target grade. Rejected alternative: opaque presentation (looks instant, but recurses into garbage).
+* 2026-11-13 — **Capture-side neutralisation** subtracts the previous layer before grading
+  (`game ≈ (observed − α·layer)/(1−α)`) so the solution is accurate rather than converged-over-time only.
+  Costs one `getPixels/setPixels` on the capture thread; gated by `useFeedbackNeutralisation` for weak SoCs.
+* 2026-11-13 — **New mode `HDR` (=3, append-only enum)**; capture-required modes are centralised in
+  `Prefs.requiresCapture`.
+* 2026-11-13 — **Presets ship clamped** (`HdrPreset.sanitized()`), and remote tuning can only move the
+  uniform inside safe ranges — a bad backend payload can never produce a black or blown-out screen.
+* 2026-11-13 — Foreground service promotes to `specialUse|mediaProjection` at capture start (API 34 rule).
+* 2026-11-13 — Honest framing in UI/docs: this is a real GLSL HDR grade over captured frames, not
+  injection into PUBG's renderer (impossible without root/Vulkan layer).
+
 ## Known constraints
 
 * Google Play rejects overlay-over-game apps; distribution is direct APK + GitHub Releases.

@@ -39,6 +39,15 @@ Status legend: `[x]` done · `[~]` in progress · `[ ]` open
 - [x] `dlss-config` edge function (SoC-tier presets)
 - [x] `SupabaseClient`, `TelemetryQueue`, `SyncWorker`, `ConfigRepository`
 
+## Phase 6b — LIVE HDR graphics (v1.1)
+- [x] `HdrCompositor` (bright-pass, separated blur, tone-map, bloom, vibrance, unsharp)
+- [x] Correction-layer compositing (convergent feedback) + capture-side neutralisation
+- [x] `HdrSurfaceView` translucent live layer + preset badge
+- [x] Five PUBG presets (EXTREME HDR / CINEMATIC / VISIBILITY / GAME VIVID / NATIVE) + blend control
+- [x] `HDR` mode chip, live preset switcher, puck menu actions (HDR LAYER, HDR PRESET)
+- [x] Backend: `sessions.hdr_preset`, per-tier HDR tuning, `hdr_performance` view
+- [x] Unit tests for preset safety/cycling
+
 ## Phase 6 — Hardening & release
 - [x] Crash shield on all entry points, ANR-free IO
 - [x] Unit tests for governor/upscaler/queue
