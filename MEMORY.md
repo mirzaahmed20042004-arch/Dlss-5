@@ -68,6 +68,25 @@
 * 2026-11-13 — Honest framing in UI/docs: this is a real GLSL HDR grade over captured frames, not
   injection into PUBG's renderer (impossible without root/Vulkan layer).
 
+## v1.2.0 — root causes of the "GPU blocked" reports (2026-11-13)
+
+* 2026-11-13 — **`GL_ALPHA` is not a renderable format in GLES 2.0.** The upscale pipeline used alpha
+  textures as FBO attachments → `FRAMEBUFFER_UNSUPPORTED` on nearly every mobile driver → "upscale
+  pipeline failed". All render targets are `GL_RGBA8` now (`GpuTextures`).
+* 2026-11-13 — **Never ship one monolithic shader.** A single unsupported construct rejects the whole
+  program, which read to users as "my GPU is blocked". Every stage now has a tier ladder
+  (`hdr_full → hdr_lite → hdr_minimal → software_cpu`, `lanczos3 → bicubic → linear_sharpen`), the first
+  compile wins, and failures are cached in `ProgramCache.bannedTiers` so we never retry on a frame.
+* 2026-11-13 — **Probe FBO support and shrink.** `GpuTextures.supportsRenderTarget()` validates the exact
+  size; the pipeline steps down 3/4 at a time. Old GPUs get a smaller working surface instead of an error.
+* 2026-11-13 — **CPU grading fallback** (`SoftwareGrader` + pure `ColorMath`) means even a device that
+  rejects every shader still gets a real, visible colour change. Honest label: "compatibility mode".
+* 2026-11-13 — **Contrast belongs in display space.** Applying the contrast pivot in linear light crushed
+  shadows to black (linear 0.5 = sRGB 0.73). HDR ops stay linear; tone-map first, then
+  contrast/shadow-lift/saturation. Unit tests lock this in.
+* 2026-11-13 — **Diagnostics over apologies:** the in-app ENGINE DIAG panel reports the live shader tier,
+  display policy and thermal state, so "it doesn't work" becomes observable.
+
 ## Known constraints
 
 * Google Play rejects overlay-over-game apps; distribution is direct APK + GitHub Releases.

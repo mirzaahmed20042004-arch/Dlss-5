@@ -10,9 +10,9 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/mirzaahmed20042004-arch/Dlss-5/releases/tag/v1.1.0"><b>⬇ Download DLSS-5 v1.1.0 APK</b></a>
+  <a href="https://github.com/mirzaahmed20042004-arch/Dlss-5/releases/tag/v1.2.0"><b>⬇ Download DLSS-5 v1.2.0 APK</b></a>
   &nbsp;·&nbsp;
-  <a href="https://github.com/mirzaahmed20042004-arch/Dlss-5/releases/download/v1.1.0/DLSS-5-23.apk"><b>direct .apk</b></a>
+  <a href="https://github.com/mirzaahmed20042004-arch/Dlss-5/releases/download/v1.2.0/DLSS-5-33.apk"><b>direct .apk</b></a>
 </p>
 
 ---
@@ -80,7 +80,7 @@ chain you can see, not a shader-compilation stub, and it is free.
 
 ## Install
 
-1. Grab the APK: **[v1.1.0 direct download](https://github.com/mirzaahmed20042004-arch/Dlss-5/releases/download/v1.1.0/DLSS-5-23.apk)**
+1. Grab the APK: **[v1.2.0 direct download](https://github.com/mirzaahmed20042004-arch/Dlss-5/releases/download/v1.2.0/DLSS-5-33.apk)**
    (or browse [Releases](https://github.com/mirzaahmed20042004-arch/Dlss-5/releases)).
 2. Allow "install unknown apps" for your browser, then install.
 3. Open the app → **Display over other apps** → allow → back.

@@ -45,7 +45,7 @@ class ProgramCache {
     }
 
     /** Walks [tiers] and returns the first that links; null when the device rejects all of them. */
-    fun compileFirstUsable(tiers: List<ShaderLibrary.Tier>, registerShaders: Boolean = true): Compiled? {
+    fun compileFirstUsable(tiers: List<ShaderLibrary.Tier>): Compiled? {
         for (tier in tiers) {
             if (isBanned(tier.id)) continue
             val program = try {

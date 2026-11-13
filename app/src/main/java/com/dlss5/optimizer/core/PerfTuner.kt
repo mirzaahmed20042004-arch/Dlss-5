@@ -91,7 +91,7 @@ class PerfTuner(private val context: Context) {
     fun applyPreferredRate(
         params: WindowManager.LayoutParams,
         targetHz: Float,
-        tier: SocTier
+        @Suppress("UNUSED_PARAMETER") tier: SocTier
     ): Boolean = try {
         params.preferredRefreshRate = targetHz
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
