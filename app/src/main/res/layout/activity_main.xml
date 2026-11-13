@@ -430,6 +430,14 @@
                 android:textSize="9.5sp" />
 
             <TextView
+                android:id="@+id/btnCloudTune"
+                style="@style/ChipNeon"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:text="⤓ FETCH TUNED PRESET FROM CLOUD" />
+
+            <TextView
                 android:id="@+id/engineDiag"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"

@@ -562,11 +562,13 @@ class DlssOverlayService : Service() {
 
             val mode = prefs.mode
             val hdr = mode == Prefs.MODE_HDR
+            // Base preset + any cloud-tuned override stored by the app (SoC-tier specific).
             val preset = HdrPreset.byId(prefs.hdrPresetId).let {
                 HdrPreset.withRemote(it, prefs.remoteConfigJson?.let { raw ->
                     runCatching { org.json.JSONObject(raw).optJSONObject("hdr") }.getOrNull()
                 })
             }
+            Logger.i(TAG, "HDR preset ${preset.id} exp=${preset.exposure} sat=${preset.saturation} bloom=${preset.bloom}")
             // HDR mode runs the compositor at the preset's cadence; DLSS modes keep their own rates.
             // UPSCALE = cheap bicubic chain at a faster preview rate.
             // TRUE DLSS = Lanczos-3 + unsharp at a lower preview rate (quality over cadence).

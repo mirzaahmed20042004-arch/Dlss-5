@@ -19,7 +19,9 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import com.dlss5.optimizer.core.DeviceProfile
 import com.dlss5.optimizer.core.DeviceProfiler
+import androidx.lifecycle.lifecycleScope
 import com.dlss5.optimizer.core.HdrPreset
+import kotlinx.coroutines.launch
 import com.dlss5.optimizer.core.DlssOverlayService
 import com.dlss5.optimizer.core.SessionRecord
 import com.dlss5.optimizer.network.LocalStore
@@ -86,6 +88,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnRefreshLock: TextView
     private lateinit var engineDiag: TextView
     private lateinit var btnSnapshots: TextView
+    private lateinit var btnCloudTune: TextView
     private lateinit var toggleSafe: TextView
     private lateinit var toggleTelemetry: TextView
 
@@ -225,6 +228,7 @@ class MainActivity : AppCompatActivity() {
         btnRefreshLock = findViewById(R.id.btnRefreshLock)
         engineDiag = findViewById(R.id.engineDiag)
         btnSnapshots = findViewById(R.id.btnSnapshots)
+        btnCloudTune = findViewById(R.id.btnCloudTune)
         toggleSafe = findViewById(R.id.toggleSafe)
         toggleTelemetry = findViewById(R.id.toggleTelemetry)
     }
@@ -249,6 +253,7 @@ class MainActivity : AppCompatActivity() {
         btnHdrBlend.setOnClickListener { cycleHdrBlend() }
         btnSharpness.setOnClickListener { cycleSharpness() }
         btnRefreshLock.setOnClickListener { toggleRefreshLock() }
+        btnCloudTune.setOnClickListener { fetchCloudTuning() }
         btnSnapshots.setOnClickListener {
             try {
                 Haptics.confirm(this)
@@ -574,6 +579,53 @@ class MainActivity : AppCompatActivity() {
     private fun activePreset(): HdrPreset = HdrPreset.byId(prefs.hdrPresetId)
 
     /**
+     * Pulls the SoC-tier tuned HDR payload from the edge function and applies it live. The local preset
+     * stays the fallback, so a failed fetch changes nothing.
+     */
+    private fun fetchCloudTuning() {
+        try {
+            Haptics.confirm(this)
+            btnCloudTune.text = "⤓ CONTACTING CLOUD…"
+            com.dlss5.optimizer.network.SyncWorker.enqueue(this)
+            lifecycleScope.launch {
+                val base = activePreset()
+                val tuned = com.dlss5.optimizer.network.ConfigRepository.fetchTunedHdr(
+                    this@MainActivity, profile.tier.key, base
+                )
+                btnCloudTune.text = "⤓ FETCH TUNED PRESET FROM CLOUD"
+                if (tuned == null) {
+                    toast("Cloud tuning unreachable — keeping your local preset.")
+                } else {
+                    // Persist the tuned numbers as an override for the current preset id.
+                    tunedPresetOverride = tuned.preset
+                    prefs.remoteConfigJson = org.json.JSONObject().put("hdr", org.json.JSONObject().apply {
+                        put("exposure", tuned.preset.exposure.toDouble())
+                        put("contrast", tuned.preset.contrast.toDouble())
+                        put("saturation", tuned.preset.saturation.toDouble())
+                        put("temperature", tuned.preset.temperature.toDouble())
+                        put("shadow_lift", tuned.preset.shadowLift.toDouble())
+                        put("highlight_rolloff", tuned.preset.highlightRolloff.toDouble())
+                        put("bloom", tuned.preset.bloom.toDouble())
+                        put("bloom_threshold", tuned.preset.bloomThreshold.toDouble())
+                        put("sharpen", tuned.preset.sharpen.toDouble())
+                    }).toString()
+                    hdrPresetName.text = "${base.label} (TUNED)"
+                    hdrPresetDesc.text = "Cloud-tuned for ${profile.tier.key.uppercase()} devices · " +
+                        "exp ${"%.2f".format(tuned.preset.exposure)} · sat ${"%.2f".format(tuned.preset.saturation)} · " +
+                        "bloom ${"%.2f".format(tuned.preset.bloom)}"
+                    toast("Tuned preset applied for ${profile.tier.key.uppercase()} tier.")
+                }
+            }
+        } catch (t: Throwable) {
+            Logger.w(TAG, "fetchCloudTuning failed: ${t.message}")
+            btnCloudTune.text = "⤓ FETCH TUNED PRESET FROM CLOUD"
+        }
+    }
+
+    /** Last cloud-tuned preset, applied on top of the selected base preset. */
+    private var tunedPresetOverride: HdrPreset? = null
+
+    /**
      * Shows what the engine is *actually* doing: mode, shader tier that compiled, and the display policy.
      * This replaces vague messages with observability — the user can see the GPU work is real.
      */
@@ -610,6 +662,7 @@ class MainActivity : AppCompatActivity() {
             val index = (HdrPreset.indexOf(prefs.hdrPresetId) + direction + all.size) % all.size
             val preset = all[index]
             prefs.hdrPresetId = preset.id
+            tunedPresetOverride = null
             syncHdrSection()
             if (prefs.mode == Prefs.MODE_HDR && prefs.engineRunning) {
                 // Restart capture with the new preset so the change is visible in-game immediately.
