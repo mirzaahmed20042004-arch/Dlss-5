@@ -153,9 +153,14 @@ class ColorLookTest {
         assertTrue(nights.size >= 3)
         nights.forEach {
             assertTrue("${it.id} too bright", it.brightness <= 0.95f)
-            assertTrue("${it.id} not cool", it.warmth <= 0f)
             assertTrue("${it.id} top layer too weak", it.topAlpha >= 0.25f)
         }
+        // the cool night looks must actually be cool; AMBER_NIGHT is deliberately warm (blue-light cut)
+        listOf("night_mode", "night_vision", "moonlight").forEach { id ->
+            val look = com.dlss5.optimizer.core.ColorLook.byId(id)
+            assertTrue("$id not cool", look.warmth < 0f)
+        }
+        assertTrue("amber night should be warm", com.dlss5.optimizer.core.ColorLook.AMBER_NIGHT.warmth > 0f)
     }
 
     @Test
