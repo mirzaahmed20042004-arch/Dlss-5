@@ -304,6 +304,30 @@ class OverlayController(
         }
     }
 
+    /**
+     * Applies a preferred refresh rate to the HUD window (the surface that owns the display mode while
+     * we're on top). `0f` clears the preference and hands control back to the system.
+     */
+    fun applyPreferredRefreshRate(targetHz: Float, tier: SocTier): Boolean {
+        return try {
+            val view = hudView ?: hdrView ?: return false
+            val params = hudParams ?: hdrParams ?: return false
+            if (targetHz <= 0f) {
+                params.preferredRefreshRate = 0f
+                params.preferredDisplayModeId = 0
+            } else if (!perfTuner.applyPreferredRate(params, targetHz, tier)) {
+                return false
+            }
+            windowManager.updateViewLayout(view, params)
+            true
+        } catch (t: Throwable) {
+            Logger.w(TAG, "preferred refresh rate failed: ${t.message}")
+            false
+        }
+    }
+
+    private val perfTuner by lazy { PerfTuner(context) }
+
     fun toggleHud() {
         val view = hudView ?: return
         view.setPanelVisible(!view.isPanelVisible())

@@ -81,6 +81,13 @@ class HdrCompositor {
         blend = value.coerceIn(0f, 1f)
     }
 
+    /** Extra sharpening on top of the preset value (0..1). */
+    fun setSharpness(value: Float) {
+        sharpnessBoost = value.coerceIn(0f, 1f)
+    }
+
+    private var sharpnessBoost = -1f
+
     fun setEnabled(value: Boolean) {
         enabled = value
     }
@@ -205,7 +212,11 @@ class HdrCompositor {
                 programs.float(compositeProgram, "uShadowLift", preset.shadowLift)
                 programs.float(compositeProgram, "uRolloff", preset.highlightRolloff)
                 programs.float(compositeProgram, "uBloomStrength", if (hasBloom()) preset.bloom else 0f)
-                programs.float(compositeProgram, "uSharpen", preset.sharpen)
+                programs.float(
+                    compositeProgram,
+                    "uSharpen",
+                    if (sharpnessBoost >= 0f) maxOf(preset.sharpen, sharpnessBoost) else preset.sharpen
+                )
                 programs.float(compositeProgram, "uBlend", blend)
                 programs.float(compositeProgram, "uAlpha", correctionAlpha)
                 programs.draw(compositeProgram)

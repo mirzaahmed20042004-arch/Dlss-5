@@ -33,6 +33,9 @@ class Prefs private constructor(context: Context) {
         const val KEY_HDR_ENABLED = "hdr_enabled"
         const val KEY_HDR_BLEND = "hdr_blend"
         const val KEY_HDR_LAST_MODE = "hdr_last_mode"
+        const val KEY_SHARPNESS = "sharpness"
+        const val KEY_LOCK_REFRESH = "lock_refresh"
+        const val KEY_FEEDBACK_NEUTRALISE = "feedback_neutralise"
 
         /** Engine modes. Values are persisted, so never renumber — append only. */
         const val MODE_GOVERNOR = 0
@@ -119,6 +122,21 @@ class Prefs private constructor(context: Context) {
     var hdrBlend: Float
         get() = sp.getFloat(KEY_HDR_BLEND, 1.0f).coerceIn(0f, 1f)
         set(value) = sp.edit().putFloat(KEY_HDR_BLEND, value.coerceIn(0f, 1f)).apply()
+
+    /** Extra sharpening applied after the grade/upscale, 0..1. */
+    var sharpness: Float
+        get() = sp.getFloat(KEY_SHARPNESS, 0.38f).coerceIn(0f, 1f)
+        set(value) = sp.edit().putFloat(KEY_SHARPNESS, value.coerceIn(0f, 1f)).apply()
+
+    /** Pins the display to a sustainable refresh rate (reduces frame-time variance). */
+    var lockRefreshRate: Boolean
+        get() = sp.getBoolean(KEY_LOCK_REFRESH, true)
+        set(value) = sp.edit().putBoolean(KEY_LOCK_REFRESH, value).apply()
+
+    /** Subtract our own correction layer from the capture before grading (accuracy vs CPU cost). */
+    var feedbackNeutralise: Boolean
+        get() = sp.getBoolean(KEY_FEEDBACK_NEUTRALISE, true)
+        set(value) = sp.edit().putBoolean(KEY_FEEDBACK_NEUTRALISE, value).apply()
 
     /** Rotates the anonymous identity and drops locally queued telemetry ownership. */
     fun rotateDeviceId(): String {

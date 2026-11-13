@@ -95,6 +95,11 @@ class ScreenCaptureEngine(
         softwareGrader.setPreset(preset)
     }
 
+    fun setSharpness(value: Float) {
+        compositor.setSharpness(value)
+        softwareGrader.setSharpness(value)
+    }
+
     fun setHdrBlend(blend: Float) {
         compositor.setBlend(blend)
         softwareGrader.setBlend(blend)
@@ -224,6 +229,7 @@ class ScreenCaptureEngine(
                 if (useFeedbackNeutralisation) {
                     neutraliseCorrection(bitmap, compositor.correctionAlpha())
                 }
+
                 val graded = compositor.process(bitmap)
                 if (graded != null) lastCorrection = graded
                 if (graded != null) {

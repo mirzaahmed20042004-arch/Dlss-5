@@ -169,6 +169,7 @@ class DlssOverlayService : Service() {
 
             startEngine()
             acquireWakeLock()
+            applyDisplayPolicy()
 
             val resultCode = intent?.getIntExtra(EXTRA_CAPTURE_RESULT_CODE, Int.MIN_VALUE) ?: Int.MIN_VALUE
             @Suppress("DEPRECATION")
@@ -573,8 +574,12 @@ class DlssOverlayService : Service() {
                 hdrPreset = preset,
                 hdrBlend = prefs.hdrBlend,
                 captureScaleOverride = if (hdr) preset.captureScale else -1f,
+                useFeedbackNeutralisation = prefs.feedbackNeutralise,
                 upscaleOutput = !hdr
-            ).also { it.start() }
+            ).also {
+                it.setSharpness(prefs.sharpness)
+                it.start()
+            }
 
             overlay?.setStatus(
                 when {
@@ -628,6 +633,29 @@ class DlssOverlayService : Service() {
     }
 
     // ------------------------------------------------------------------ power
+
+    private val perfTuner by lazy { com.dlss5.optimizer.core.PerfTuner(this) }
+
+    /**
+     * Pins the display to the highest refresh rate this SoC class can actually hold. Frame-time variance
+     * on 90/120 Hz panels is dominated by mode switching; locking it is one of the few *real* FPS wins
+     * available to a non-root app.
+     */
+    private fun applyDisplayPolicy() {
+        try {
+            if (!prefs.lockRefreshRate) return
+            val caps = perfTuner.capabilities()
+            val target = perfTuner.recommendedRefreshRate(profile.tier, caps.supportedRefreshRates)
+            val applied = overlay?.applyPreferredRefreshRate(target, profile.tier) == true
+            if (applied) {
+                Logger.i(TAG, "display pinned to ${"%.0f".format(target)}Hz (${paramsSummary(target)})")
+            }
+        } catch (t: Throwable) {
+            Logger.w(TAG, "display policy failed: ${t.message}")
+        }
+    }
+
+    private fun paramsSummary(hz: Float): String = "tier=${profile.tier.key} target=${hz.toInt()}Hz"
 
     private fun acquireWakeLock() {
         try {
@@ -712,6 +740,11 @@ class DlssOverlayService : Service() {
             overlay?.detach()
         } catch (t: Throwable) {
             Logger.w(TAG, "overlay shutdown: ${t.message}")
+        }
+        try {
+            overlay?.applyPreferredRefreshRate(0f, profile.tier)
+        } catch (t: Throwable) {
+            Logger.w(TAG, "display policy reset failed: ${t.message}")
         }
         releaseWakeLock()
         capture = null

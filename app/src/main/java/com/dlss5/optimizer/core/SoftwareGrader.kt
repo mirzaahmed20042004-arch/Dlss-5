@@ -56,6 +56,13 @@ class SoftwareGrader {
         blend = value.coerceIn(0f, 1f)
     }
 
+    /** The CPU grader applies the preset's contrast/saturation; sharpness is GPU-only, so store it. */
+    fun setSharpness(value: Float) {
+        sharpness = value.coerceIn(0f, 1f)
+    }
+
+    private var sharpness = 0.38f
+
     /**
      * Produces a correction layer for [input].
      *
