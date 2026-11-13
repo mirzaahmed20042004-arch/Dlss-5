@@ -54,7 +54,24 @@ A one-button overlay engine that makes PUBG Mobile frame pacing more stable on m
 | NATIVE | colour work off (pure DLSS) |
 
 Switch presets live from the app (prev/next), or in-game from the puck menu (**HDR PRESET**).
-Blend control: 100 % → 75 % → 50 % if the look is too strong.
+Blend control: 100 % → 75 % → 50 % if the look is too strong. **SHARP** cycles 12/25/50/80 %.
+
+### Never blocked by a GPU (v1.2.0)
+
+Shaders are compiled through a **tier ladder** — `hdr_full → hdr_lite → hdr_minimal → CPU`. Whatever your
+driver accepts is what runs; a rejected tier is remembered and skipped forever, and the app tells you which
+tier is live in the **ENGINE DIAG** panel instead of claiming your GPU is unsupported.
+
+### Prove it / share it
+
+Puck menu → **SNAPSHOT** (or **SHOTS ON** in the app) writes the graded frame to
+`Pictures/DLSS-5` so you can open it next to a raw screenshot.
+
+### Performance controls
+
+* **LOCK FPS** pins the display to the highest refresh rate your SoC class can hold — removes mode-switch
+  stutter on 90/120 Hz panels.
+* **FETCH TUNED PRESET FROM CLOUD** applies the per-SoC-tier grade from the backend in one tap.
 
 **How it stays honest:** the graded picture is produced by a real GLSL pipeline running on captured
 frames. The layer is translucent and touch-transparent, so PUBG keeps rendering, keeps its input, and keeps
@@ -98,6 +115,7 @@ CI (`.github/workflows/android.yml`) builds, unit-tests, verifies and publishes 
 | [`MEMORY.md`](MEMORY.md) | long-lived decisions and their rationale |
 | [`docs/BUILD.md`](docs/BUILD.md) | build + signing + troubleshoot |
 | [`docs/TESTING.md`](docs/TESTING.md) | manual device matrix and expected results |
+| [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md) | every in-app message → meaning → fix (v1.2.0) |
 | [`docs/PRIVACY.md`](docs/PRIVACY.md) | exactly what leaves the device |
 
 ## Backend
