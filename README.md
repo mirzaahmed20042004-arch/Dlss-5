@@ -10,9 +10,9 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/mirzaahmed20042004-arch/Dlss-5/releases/tag/v1.2.0"><b>⬇ Download DLSS-5 v1.2.0 APK</b></a>
+  <a href="https://github.com/mirzaahmed20042004-arch/Dlss-5/releases/tag/v1.3.0"><b>⬇ Download DLSS-5 v1.3.0 APK</b></a>
   &nbsp;·&nbsp;
-  <a href="https://github.com/mirzaahmed20042004-arch/Dlss-5/releases/download/v1.2.0/DLSS-5-33.apk"><b>direct .apk</b></a>
+  <a href="https://github.com/mirzaahmed20042004-arch/Dlss-5/releases/download/v1.3.0/DLSS-5-APK.apk"><b>direct .apk</b></a>
 </p>
 
 ---
@@ -43,7 +43,24 @@ A one-button overlay engine that makes PUBG Mobile frame pacing more stable on m
 | **TRUE DLSS** | overlay + capture | real frames from `MediaProjection` at 0.70×, Lanczos-3 upscale, unsharp mask, temporal blend. |
 | **HDR** | overlay + capture | **live GPU colour grade at 30 fps**: filmic tone-mapping, bloom, +35 % vibrance, shadow lift, unsharp — applied to the real game picture through a translucent correction layer. |
 
-### LIVE HDR graphics — free, five presets
+### COLOUR LOOKS — visible on every phone (v1.3.0)
+
+A real colour layer painted over the game, needing **only** the overlay permission:
+
+| Look | What you see |
+|---|---|
+| **DLSS EXTREME** | warm cinematic punch, deep corners (default) |
+| **VIVID HDR** | cool sky + warm ground, strong pop |
+| **🌙 NIGHT MODE** | sky goes night-blue, ground cools, screen dims |
+| **NIGHT VISION** | green optics tint, lifted shadows |
+| **MOONLIGHT** | pale blue, heavy vignette, dim |
+| **AMBER NIGHT** | warm blue-light-cut night |
+| VISIBILITY / CINEMATIC / SUNSET / NOIR / PURE | competitive, film, golden-hour, dramatic, none |
+
+Switch from the app (**◀ LOOK / LOOK ▶**, **🌙 NIGHT**, **STRENGTH 100/70/45 %**, **AUTO NIGHT**) or from the
+puck menu. **AI TUNE** picks preset + look + strength + fps cap from your own session history.
+
+### LIVE HDR graphics — per-pixel GPU grade (needs capture)
 
 | Preset | What you see |
 |---|---|
